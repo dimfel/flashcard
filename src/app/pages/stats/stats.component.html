@@ -1,0 +1,55 @@
+<h1>Stats</h1>
+
+@if (loading()) {
+  <p class="empty-state">Loading…</p>
+} @else if (totalCards() === 0) {
+  <div class="empty-state">
+    <p>Nothing to measure yet.</p>
+    <a class="btn" routerLink="/decks">Add some cards</a>
+  </div>
+} @else {
+  <div class="tiles">
+    <div class="card-surface tile">
+      <span class="tile-value">{{ totalCards() }}</span>
+      <span class="tile-label">cards</span>
+    </div>
+    <div class="card-surface tile">
+      <span class="tile-value">{{ totalReviews() }}</span>
+      <span class="tile-label">reviews</span>
+    </div>
+    <div class="card-surface tile">
+      <span class="tile-value">
+        @if (retention(); as rate) {
+          {{ rate * 100 | number: '1.0-0' }}%
+        } @else {
+          —
+        }
+      </span>
+      <span class="tile-label">recalled</span>
+    </div>
+  </div>
+
+  <section class="card-surface panel">
+    <h2>Reviews, last 14 days</h2>
+    <div class="chart" role="img" aria-label="Daily review counts for the last 14 days">
+      @for (day of last14(); track $index) {
+        <div class="chart-col">
+          <div class="chart-bar" [style.height.%]="day.height" [title]="day.count + ' reviews'">
+            <span class="visually-hidden">{{ day.count }} reviews</span>
+          </div>
+          <span class="chart-label">{{ day.label }}</span>
+        </div>
+      }
+    </div>
+  </section>
+
+  <section class="card-surface panel">
+    <h2>Deck maturity</h2>
+    <ul class="maturity">
+      <li><span class="dot dot-fresh"></span> {{ maturity().fresh }} not started</li>
+      <li><span class="dot dot-learning"></span> {{ maturity().learning }} learning</li>
+      <li><span class="dot dot-review"></span> {{ maturity().review }} in review</li>
+    </ul>
+    <p class="panel-note">Counted per direction, so a card drilled both ways appears twice.</p>
+  </section>
+}

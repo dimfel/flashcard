@@ -1,0 +1,71 @@
+<h1>Settings</h1>
+
+<section class="card-surface panel">
+  <h2>Backup</h2>
+  <p class="panel-note">
+    Every card lives in this browser’s storage. Clearing site data — or switching device — loses it
+    all unless you have a file. Export is also how you sync: keep the file in cloud storage and
+    import it on the other device.
+  </p>
+  <p class="panel-note">
+    Last export: <strong>{{ lastExportLabel() }}</strong>
+  </p>
+
+  <div class="panel-actions">
+    <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="exportBackup()">
+      Export JSON
+    </button>
+
+    <label class="btn import-label">
+      Import JSON
+      <input type="file" accept="application/json,.json" (change)="onFileSelected($event)" />
+    </label>
+  </div>
+
+  @if (importResult(); as result) {
+    <p class="banner import-ok" role="status">
+      Imported. Now holding {{ result.decks }} decks and {{ result.cards }} cards. Cards edited more
+      recently won.
+    </p>
+  }
+  @if (importError()) {
+    <p class="banner import-error" role="alert">{{ importError() }}</p>
+  }
+</section>
+
+<section class="card-surface panel">
+  <h2>Scheduling</h2>
+
+  <label class="field">
+    <span class="field-label">New cards per day, per deck</span>
+    <input
+      class="input narrow"
+      type="number"
+      min="0"
+      step="1"
+      [ngModel]="settings().newCardsPerDay"
+      (ngModelChange)="setNewCardsPerDay($event)"
+    />
+    <span class="field-hint">
+      Caps how many unseen cards enter a session. Adding 200 cards in one sitting shouldn’t detonate
+      tomorrow morning.
+    </span>
+  </label>
+
+  <label class="field">
+    <span class="field-label">Target retention</span>
+    <input
+      class="input narrow"
+      type="number"
+      min="0.7"
+      max="0.98"
+      step="0.01"
+      [ngModel]="settings().targetRetention"
+      (ngModelChange)="setTargetRetention($event)"
+    />
+    <span class="field-hint">
+      The share of cards FSRS aims to have you recall. Higher means shorter intervals and more
+      reviews; 0.9 is the usual balance.
+    </span>
+  </label>
+</section>

@@ -1,0 +1,98 @@
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+
+  h1 {
+    margin: 0;
+  }
+}
+
+.deck-line {
+  margin: 0.15rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.saved-flash {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.editor {
+  padding: 1.25rem;
+}
+
+.term-input {
+  font-size: 1.5rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.use-selection {
+  margin-top: 0.5rem;
+}
+
+.inline-warn {
+  margin: 0.6rem 0 0;
+}
+
+.details-toggle {
+  background: none;
+  border: none;
+  padding: 0.35rem 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.9rem;
+
+  &:hover {
+    color: var(--text);
+  }
+}
+
+.details {
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+
+.two-up {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.contrast-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) 2fr auto;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+
+@media (max-width: 560px) {
+  .two-up,
+  .contrast-row {
+    grid-template-columns: 1fr;
+  }
+}

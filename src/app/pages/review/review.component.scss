@@ -1,0 +1,217 @@
+.session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.quit {
+  color: var(--text-dim);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--text);
+  }
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.review-card {
+  padding: 2rem 1.5rem;
+  text-align: center;
+  min-height: 15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.direction-hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Large enough to actually inspect the strokes, which is half the point of
+ * seeing a character rather than reading a romanisation of it. */
+.prompt {
+  font-size: 3.25rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem;
+  word-break: break-word;
+}
+
+.prompt-sentence {
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.reveal-btn {
+  align-self: center;
+}
+
+.answer {
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+  text-align: left;
+}
+
+.answer-term {
+  font-size: 2.5rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  text-align: center;
+  color: var(--accent);
+}
+
+.gloss {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  color: var(--text-dim);
+}
+
+.reading {
+  font-style: italic;
+}
+
+.sentence {
+  font-size: 1.35rem;
+  margin: 0 0 0.4rem;
+  text-align: center;
+}
+
+.translation {
+  margin: 0 0 1rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.usage {
+  margin-bottom: 0.75rem;
+}
+
+.usage-note {
+  margin: 0.4rem 0 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.chip-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.6rem;
+}
+
+.contrast-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.925rem;
+  color: var(--text-dim);
+}
+
+.grades {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.grade {
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.6rem 0.4rem;
+  border-top: 3px solid currentcolor;
+}
+
+.grade-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.grade-interval {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.grade-again {
+  color: var(--again);
+}
+.grade-hard {
+  color: var(--hard);
+}
+.grade-good {
+  color: var(--good);
+}
+.grade-easy {
+  color: var(--easy);
+}
+
+.shortcut-hint {
+  margin-top: 1.25rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.done {
+  h1 {
+    margin-bottom: 0.5rem;
+  }
+}
+
+.done-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+}
+
+@media (max-width: 560px) {
+  .prompt {
+    font-size: 2.5rem;
+  }
+
+  .prompt-sentence {
+    font-size: 1.4rem;
+  }
+
+  /* Thumbs, not pointers: the grade row stays reachable at the bottom. */
+  .grades {
+    gap: 0.35rem;
+  }
+
+  .grade {
+    padding: 0.7rem 0.2rem;
+  }
+
+  .shortcut-hint {
+    display: none;
+  }
+}

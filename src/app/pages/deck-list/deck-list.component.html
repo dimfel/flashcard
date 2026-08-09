@@ -1,0 +1,129 @@
+<div class="page-head">
+  <h1>Decks</h1>
+  @if (!creating()) {
+    <button type="button" class="btn btn-primary" (click)="startCreating()">New deck</button>
+  }
+</div>
+
+@if (backupStale()) {
+  <p class="banner">
+    No backup in the last 30 days. Everything lives in this browser, so
+    <a routerLink="/settings">export a copy</a> before something clears it.
+  </p>
+}
+
+@if (creating()) {
+  <form class="card-surface create-form" (ngSubmit)="create()">
+    <label class="field">
+      <span class="field-label">Deck name</span>
+      <input
+        class="input"
+        name="name"
+        [ngModel]="newName()"
+        (ngModelChange)="newName.set($event)"
+        placeholder="Chinese — Reading"
+        autofocus
+      />
+    </label>
+
+    <label class="field">
+      <span class="field-label">Language</span>
+      <input
+        class="input"
+        name="language"
+        list="language-presets"
+        [ngModel]="newLanguage()"
+        (ngModelChange)="newLanguage.set($event)"
+      />
+      <datalist id="language-presets">
+        @for (language of languages; track language.code) {
+          <option [value]="language.code">{{ language.label }}</option>
+        }
+      </datalist>
+      <span class="field-hint">Sets the text language and font. Any tag works.</span>
+    </label>
+
+    <label class="checkbox-row">
+      <input
+        type="checkbox"
+        name="production"
+        [ngModel]="newProduction()"
+        (ngModelChange)="newProduction.set($event)"
+      />
+      <span>
+        <strong>Also drill production</strong>
+        <span class="field-hint">
+          Each card is scheduled twice: once to recognise the word, once to produce it from the
+          sentence. Recognising and producing decay at different rates, so they're tracked
+          separately.
+        </span>
+      </span>
+    </label>
+
+    <div class="form-actions">
+      <button type="button" class="btn" (click)="cancelCreating()">Cancel</button>
+      <button type="submit" class="btn btn-primary" [disabled]="!newName().trim()">
+        Create deck
+      </button>
+    </div>
+  </form>
+}
+
+@if (loading()) {
+  <p class="empty-state">Loading…</p>
+} @else if (decks().length === 0 && !creating()) {
+  <div class="empty-state">
+    <p>No decks yet.</p>
+    <p>Create one to start collecting words.</p>
+  </div>
+} @else {
+  <ul class="deck-list">
+    @for (entry of decks(); track entry.deck.id) {
+      <li class="card-surface deck-row">
+        <div class="deck-main">
+          <a class="deck-name" [routerLink]="['/decks', entry.deck.id]">{{ entry.deck.name }}</a>
+          <p class="deck-meta">
+            <span class="chip">{{ entry.deck.language }}</span>
+            <span>{{ entry.cardCount }} {{ entry.cardCount === 1 ? 'card' : 'cards' }}</span>
+            @if (entry.deck.productionEnabled) {
+              <span class="chip">2 directions</span>
+            }
+          </p>
+        </div>
+
+        <div class="deck-actions">
+          <a
+            class="btn btn-sm"
+            [routerLink]="['/decks', entry.deck.id, 'add']"
+            [attr.aria-label]="'Add a card to ' + entry.deck.name"
+            >Add</a
+          >
+          <a
+            class="btn btn-sm"
+            [class.btn-primary]="entry.queue.total > 0"
+            [routerLink]="['/review', entry.deck.id]"
+            [attr.aria-label]="'Review ' + entry.deck.name + ': ' + reviewLabel(entry)"
+            >{{ reviewLabel(entry) }}</a
+          >
+          @if (confirmingDelete() === entry.deck.id) {
+            <button type="button" class="btn btn-sm btn-danger" (click)="remove(entry.deck.id)">
+              Delete {{ entry.cardCount }} cards?
+            </button>
+            <button type="button" class="btn btn-sm" (click)="confirmingDelete.set(null)">
+              Keep
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="btn btn-sm"
+              (click)="confirmingDelete.set(entry.deck.id)"
+              [attr.aria-label]="'Delete ' + entry.deck.name"
+            >
+              ⋯
+            </button>
+          }
+        </div>
+      </li>
+    }
+  </ul>
+}

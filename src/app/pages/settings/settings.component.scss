@@ -1,0 +1,43 @@
+.panel {
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+
+  h2 {
+    margin-top: 0;
+  }
+}
+
+.panel-note {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.import-label {
+  cursor: pointer;
+
+  input {
+    display: none;
+  }
+}
+
+.import-ok,
+.import-error {
+  margin: 1rem 0 0;
+}
+
+.import-error {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.narrow {
+  max-width: 8rem;
+}

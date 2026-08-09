@@ -1,0 +1,140 @@
+@if (notFound()) {
+  <div class="empty-state">
+    <p>That deck no longer exists.</p>
+    <a class="btn" routerLink="/decks">Back to decks</a>
+  </div>
+} @else if (session.loading()) {
+  <p class="empty-state">Loading…</p>
+} @else if (finished()) {
+  <div class="empty-state done">
+    <h1>Done for now</h1>
+    @if (reviewedCount() > 0) {
+      <p>{{ reviewedCount() }} {{ reviewedCount() === 1 ? 'review' : 'reviews' }} this session.</p>
+    } @else {
+      <p>Nothing is due in this deck yet.</p>
+    }
+    <div class="done-actions">
+      @if (canUndo()) {
+        <button type="button" class="btn" (click)="undo()">Undo last</button>
+      }
+      @if (deck(); as currentDeck) {
+        <a class="btn" [routerLink]="['/decks', currentDeck.id, 'add']">Add a card</a>
+      }
+      <a class="btn btn-primary" routerLink="/decks">Back to decks</a>
+    </div>
+  </div>
+} @else if (current(); as item) {
+  <div class="session-bar">
+    <a class="quit" routerLink="/decks" aria-label="Leave this review session">← Decks</a>
+    <span class="progress">
+      <span class="chip">{{ isProduction() ? 'produce' : 'recognise' }}</span>
+      {{ remaining() }} left · {{ reviewedCount() }} done
+    </span>
+    <button
+      type="button"
+      class="btn btn-sm"
+      [disabled]="!canUndo()"
+      (click)="undo()"
+      aria-label="Undo the last grade"
+    >
+      Undo <kbd>Z</kbd>
+    </button>
+  </div>
+
+  <section class="card-surface review-card" [attr.aria-live]="'polite'">
+    <p class="direction-hint">
+      {{
+        isProduction()
+          ? 'Say the word that fills the blank'
+          : 'What does this mean, and how does it behave?'
+      }}
+    </p>
+
+    <p class="prompt term-text" [class.prompt-sentence]="isProduction()" [lang]="deck()?.language">
+      {{ prompt() }}
+    </p>
+
+    @if (!revealed()) {
+      <button type="button" class="btn btn-primary reveal-btn" (click)="reveal()">
+        Show answer <kbd>Space</kbd>
+      </button>
+    } @else {
+      <div class="answer">
+        @if (isProduction()) {
+          <p class="answer-term term-text" [lang]="deck()?.language">{{ item.card.term }}</p>
+        }
+
+        @if (item.card.reading || item.card.meaning) {
+          <p class="gloss">
+            @if (item.card.reading) {
+              <span class="reading">{{ item.card.reading }}</span>
+            }
+            @if (item.card.meaning) {
+              <span>{{ item.card.meaning }}</span>
+            }
+          </p>
+        }
+
+        @if (!isProduction()) {
+          <p class="sentence term-text" [lang]="deck()?.language">{{ item.card.sentence }}</p>
+        }
+        @if (item.card.sentenceTranslation) {
+          <p class="translation">{{ item.card.sentenceTranslation }}</p>
+        }
+
+        @if (item.card.usage.note || item.card.usage.register) {
+          <div class="usage">
+            @if (item.card.usage.register) {
+              <span class="chip chip-accent">{{ item.card.usage.register }}</span>
+            }
+            @if (item.card.usage.note) {
+              <p class="usage-note">{{ item.card.usage.note }}</p>
+            }
+          </div>
+        }
+
+        @if (item.card.usage.collocations.length) {
+          <p class="chip-row">
+            @for (collocation of item.card.usage.collocations; track collocation) {
+              <span class="chip term-text" [lang]="deck()?.language">{{ collocation }}</span>
+            }
+          </p>
+        }
+
+        @if (item.card.usage.contrasts.length) {
+          <ul class="contrast-list">
+            @for (contrast of item.card.usage.contrasts; track $index) {
+              <li>
+                <span class="term-text" [lang]="deck()?.language">{{ contrast.with }}</span>
+                — {{ contrast.note }}
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+  </section>
+
+  @if (revealed()) {
+    <div class="grades" role="group" aria-label="How well did you recall this?">
+      @for (option of previews(); track option.rating; let i = $index) {
+        <button
+          type="button"
+          class="btn grade"
+          [class]="'btn grade ' + gradeClass(option.rating)"
+          (click)="grade(option.rating)"
+          [attr.aria-label]="option.label + ', next review in ' + option.interval"
+        >
+          <span class="grade-label">{{ option.label }}</span>
+          <span class="grade-interval">{{ option.interval }}</span>
+          <kbd>{{ i + 1 }}</kbd>
+        </button>
+      }
+    </div>
+  }
+
+  <p class="shortcut-hint">
+    <kbd>Space</kbd> reveal · <kbd>1</kbd>–<kbd>4</kbd> grade · <kbd>E</kbd> edit ·
+    <kbd>Z</kbd> undo
+  </p>
+}

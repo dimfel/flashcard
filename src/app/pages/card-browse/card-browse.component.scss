@@ -1,0 +1,119 @@
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+
+  h1 {
+    margin: 0;
+  }
+}
+
+.deck-line {
+  margin: 0.15rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.head-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.search-field {
+  margin-bottom: 1.25rem;
+}
+
+.card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.card-row {
+  overflow: hidden;
+}
+
+.card-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  flex-wrap: wrap;
+
+  &:hover {
+    background: var(--surface-2);
+  }
+}
+
+.term {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.summary-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.reading {
+  font-style: italic;
+}
+
+.card-detail {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+
+.sentence {
+  font-size: 1.1rem;
+  margin: 0 0 0.35rem;
+}
+
+.translation {
+  margin: 0 0 0.75rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.usage-note {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
+}
+
+.chip-row {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.6rem;
+}
+
+.contrast-list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+  font-size: 0.925rem;
+  color: var(--text-dim);
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
