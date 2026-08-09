@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [claude/flashcard-app-planning-5d2rxb]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it — a half-published site
+# is worse than a slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Guards the deploy: a red suite should never reach the published site.
+      - run: npx ng test --watch=false
+
+      # The site lives at dimfel.github.io/flashcard/, so every asset URL and
+      # router link has to be resolved against that subpath rather than the root.
+      - run: npx ng build --base-href /flashcard/
+
+      - name: Add SPA fallback and disable Jekyll
+        run: |
+          # GitHub Pages serves 404.html for any path it has no file for. Angular
+          # routes like /flashcard/decks are exactly that, so this hands them to
+          # the app instead of GitHub's 404 page.
+          cp dist/flashcard/browser/index.html dist/flashcard/browser/404.html
+          # Without this, Jekyll strips files and folders beginning with _.
+          touch dist/flashcard/browser/.nojekyll
+
+      - uses: actions/configure-pages@v5
+        with:
+          # Turns Pages on for the repo on the first run, so the site does not
+          # need anyone to flip a setting by hand before this workflow works.
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/flashcard/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
