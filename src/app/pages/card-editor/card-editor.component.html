@@ -40,7 +40,7 @@
         lang="zh-Hans"
         [ngModel]="draft().term"
         (ngModelChange)="setTerm($event)"
-        placeholder="顽固"
+        placeholder="突然"
         autocomplete="off"
         autofocus
       />
@@ -61,11 +61,11 @@
         name="sentence"
         lang="zh-Hans"
         [ngModel]="draft().sentence"
-        (ngModelChange)="patch({ sentence: $event })"
+        (ngModelChange)="setSentence($event)"
         (select)="captureSelection()"
         (mouseup)="captureSelection()"
         (keyup)="captureSelection()"
-        placeholder="他顽固地拒绝了所有建议。"
+        placeholder="灯突然灭了。"
       ></textarea>
 
       <div class="sentence-actions">
@@ -75,56 +75,55 @@
             >” as the word
           </button>
         }
-        <button
-          type="button"
-          class="btn btn-sm"
-          (click)="findExamples()"
-          [disabled]="!draft().term.trim() || corpusStatus() === 'loading'"
-        >
-          @if (corpusStatus() === 'idle') {
-            Find example sentences (downloads {{ corpusDownloadLabel }} once)
-          } @else if (corpusStatus() === 'loading') {
-            Downloading examples…
-          } @else {
-            Find example sentences
-          }
-        </button>
+        @if (otherExamples().length) {
+          <button
+            type="button"
+            class="btn btn-sm"
+            (click)="showExamples.set(!showExamples())"
+            [attr.aria-expanded]="showExamples()"
+          >
+            {{ showExamples() ? 'Hide' : 'Other examples' }} ({{ otherExamples().length }})
+          </button>
+        }
+        @if (sentenceMode() === 'manual' && draft().term.trim()) {
+          <button type="button" class="btn btn-sm" (click)="refillExample()">↻ Use an example</button>
+        }
       </div>
+
+      @if (sentenceMode() === 'auto') {
+        @if (corpusStatus() === 'loading' && draft().term.trim()) {
+          <span class="field-hint">Looking for an example sentence…</span>
+        } @else if (corpusStatus() === 'error') {
+          <span class="field-hint">
+            Examples unavailable offline — connect once to download them, or type the sentence
+            yourself.
+          </span>
+        } @else if (noExample()) {
+          <span class="field-hint">
+            No example for “<span class="term-text" lang="zh-Hans">{{ draft().term.trim() }}</span
+            >” — the corpus is thin past HSK 5. Type the sentence you met it in.
+          </span>
+        } @else if (draft().sentence) {
+          <span class="field-hint">Filled in from Tatoeba. Type over it to use your own.</span>
+        } @else {
+          <span class="field-hint">Fills itself in once there's a word above.</span>
+        }
+      }
 
       @if (showExamples()) {
         <div class="examples">
-          @if (corpusStatus() === 'error') {
-            <p class="field-hint">Examples unavailable offline — connect once to download them.</p>
-          } @else if (corpusStatus() === 'loading') {
-            <p class="field-hint">Downloading…</p>
-          } @else if (exampleResults().length === 0) {
-            <p class="field-hint">
-              No sentence in the corpus contains “<span class="term-text" lang="zh-Hans">{{
-                draft().term.trim()
-              }}</span
-              >”. Type one from where you met it instead.
-            </p>
-          } @else {
-            <ul class="example-list">
-              @for (example of exampleResults(); track example.chinese) {
-                <li>
-                  <button type="button" class="example" (click)="pickExample(example)">
-                    <span class="term-text" lang="zh-Hans">{{ example.chinese }}</span>
-                    <span class="translation">{{ example.english }}</span>
-                  </button>
-                </li>
-              }
-            </ul>
-          }
-          <p class="example-credit">
-            Examples from Tatoeba · CC BY 2.0 FR
-            <button type="button" class="btn btn-sm" (click)="closeExamples()">Close</button>
-          </p>
+          <ul class="example-list">
+            @for (example of otherExamples(); track example.chinese) {
+              <li>
+                <button type="button" class="example" (click)="pickExample(example)">
+                  <span class="term-text" lang="zh-Hans">{{ example.chinese }}</span>
+                  <span class="translation">{{ example.english }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+          <p class="example-credit">Examples from Tatoeba · CC BY 2.0 FR</p>
         </div>
-      } @else if (!selection()) {
-        <span class="field-hint">
-          Tip: paste the sentence first, then highlight the word inside it.
-        </span>
       }
 
       @if (termMissingFromSentence()) {
@@ -157,7 +156,7 @@
         lang="zh-Latn-pinyin"
         [ngModel]="draft().reading"
         (ngModelChange)="setPinyin($event)"
-        placeholder="wán gù"
+        placeholder="tū rán"
         autocomplete="off"
         spellcheck="false"
       />
@@ -207,7 +206,7 @@
             name="meaning"
             [ngModel]="draft().meaning"
             (ngModelChange)="patch({ meaning: $event })"
-            placeholder="stubborn, obstinate"
+            placeholder="sudden, suddenly"
           />
         </label>
 
@@ -218,7 +217,7 @@
             name="sentenceTranslation"
             [ngModel]="draft().sentenceTranslation"
             (ngModelChange)="patch({ sentenceTranslation: $event })"
-            placeholder="He stubbornly rejected every suggestion."
+            placeholder="The light suddenly went out."
           />
         </label>
 

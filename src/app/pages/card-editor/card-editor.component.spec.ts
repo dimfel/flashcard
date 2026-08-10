@@ -58,9 +58,14 @@ class FakeExampleService {
     { chinese: '他很顽固。', english: 'He is stubborn.' },
   ];
   loadCount = 0;
+  /** While set, `load` blocks — stands in for the multi-megabyte download. */
+  gate?: { promise: Promise<void>; release: () => void };
 
   async load(): Promise<void> {
     this.loadCount++;
+    if (this.gate) {
+      await this.gate.promise;
+    }
     this.status.set('ready');
   }
 
@@ -320,7 +325,14 @@ describe('CardEditorComponent', () => {
       expect(pinyin.converted).not.toContain(card.term);
     });
 
-    it('does not download the corpus just by editing a card', () => {
+    it('does not download the corpus just to edit a card, which keeps its own sentence', async () => {
+      const card = makeCard({ deckId: deck.id });
+      await db.cards.put(card);
+      params = { cardId: card.id };
+      examples.loadCount = 0;
+
+      await mount();
+
       expect(examples.loadCount).toBe(0);
     });
 
@@ -337,66 +349,143 @@ describe('CardEditorComponent', () => {
   });
 
   describe('example sentences', () => {
-    it('does nothing without a word to search for', async () => {
-      await component.findExamples();
-
-      expect(examples.loadCount).toBe(0);
-      expect(component.showExamples()).toBe(false);
-    });
-
-    it('downloads the corpus on demand and lists matches', async () => {
+    it('fills the sentence and its translation as soon as a word is entered', async () => {
       await component.setTerm('顽固');
-
-      await component.findExamples();
-
-      expect(examples.loadCount).toBe(1);
-      expect(component.showExamples()).toBe(true);
-      expect(component.exampleResults()).toEqual([
-        { chinese: '他很顽固。', english: 'He is stubborn.' },
-      ]);
-    });
-
-    it('reports an empty result rather than pretending', async () => {
-      await component.setTerm('发生');
-
-      await component.findExamples();
-
-      expect(component.exampleResults()).toEqual([]);
-    });
-
-    it('fills the sentence and its translation from a pick', async () => {
-      await component.setTerm('顽固');
-      await component.findExamples();
-
-      component.pickExample(component.exampleResults()[0]);
 
       expect(component.draft().sentence).toBe('他很顽固。');
       expect(component.draft().sentenceTranslation).toBe('He is stubborn.');
-      // The translation lives behind the details toggle, so opening it is the
-      // difference between "it worked" and "nothing happened".
-      expect(component.showDetails()).toBe(true);
-      expect(component.showExamples()).toBe(false);
+      expect(component.sentenceMode()).toBe('auto');
     });
 
-    it('leaves the term-not-in-sentence warning quiet after a pick', async () => {
+    it('leaves the term-not-in-sentence warning quiet, since the example contains it', async () => {
       await component.setTerm('顽固');
-      await component.findExamples();
-
-      component.pickExample(component.exampleResults()[0]);
 
       expect(component.termMissingFromSentence()).toBe(false);
       expect(component.canSave()).toBe(true);
     });
 
-    it('closes the panel when the next card starts', async () => {
+    it('says so when the corpus has nothing, rather than looking broken', async () => {
+      await component.setTerm('发生');
+
+      expect(component.noExample()).toBe(true);
+      expect(component.draft().sentence).toBe('');
+    });
+
+    it('does not leave the previous word’s sentence behind', async () => {
       await component.setTerm('顽固');
-      component.patch({ sentence: '他很顽固。' });
-      await component.findExamples();
+      expect(component.draft().sentence).toBe('他很顽固。');
+
+      await component.setTerm('发生');
+
+      expect(component.draft().sentence).toBe('');
+      expect(component.draft().sentenceTranslation).toBe('');
+    });
+
+    it('keeps a hand-written sentence when the word changes afterwards', async () => {
+      await component.setTerm('顽固');
+      component.setSentence('我自己写的句子。');
+
+      await component.setTerm('发生');
+
+      expect(component.sentenceMode()).toBe('manual');
+      expect(component.draft().sentence).toBe('我自己写的句子。');
+    });
+
+    it('re-arms automatic filling when the sentence box is emptied', async () => {
+      await component.setTerm('顽固');
+      component.setSentence('mine');
+      expect(component.sentenceMode()).toBe('manual');
+
+      component.setSentence('');
+
+      expect(component.sentenceMode()).toBe('auto');
+    });
+
+    it('refills on demand, discarding a hand-written sentence', async () => {
+      await component.setTerm('顽固');
+      component.setSentence('mine');
+
+      await component.refillExample();
+
+      expect(component.draft().sentence).toBe('他很顽固。');
+      expect(component.sentenceMode()).toBe('auto');
+    });
+
+    it('offers the other hits as alternatives, excluding the one already used', async () => {
+      examples.results = [
+        { chinese: '他很顽固。', english: 'He is stubborn.' },
+        { chinese: '这个人太顽固了。', english: 'This person is too stubborn.' },
+      ];
+
+      await component.setTerm('顽固');
+
+      expect(component.draft().sentence).toBe('他很顽固。');
+      expect(component.otherExamples().map((e) => e.chinese)).toEqual(['这个人太顽固了。']);
+    });
+
+    it('swaps in a chosen alternative without going manual', async () => {
+      examples.results = [
+        { chinese: '他很顽固。', english: 'He is stubborn.' },
+        { chinese: '这个人太顽固了。', english: 'This person is too stubborn.' },
+      ];
+      await component.setTerm('顽固');
+
+      component.pickExample(component.otherExamples()[0]);
+
+      expect(component.draft().sentence).toBe('这个人太顽固了。');
+      expect(component.draft().sentenceTranslation).toBe('This person is too stubborn.');
+      // Still corpus-driven, so a later word change should refill again.
+      expect(component.sentenceMode()).toBe('auto');
+    });
+
+    it('clears the sentence when the word is cleared', async () => {
+      await component.setTerm('顽固');
+
+      await component.setTerm('');
+
+      expect(component.draft().sentence).toBe('');
+      expect(component.exampleResults()).toEqual([]);
+      expect(component.noExample()).toBe(false);
+    });
+
+    it('discards a slow lookup whose word has already moved on', async () => {
+      const gate = deferred();
+      examples.gate = gate;
+
+      const stale = component.setTerm('顽');
+      examples.gate = undefined;
+
+      await component.setTerm('顽固');
+      gate.release();
+      await stale;
+
+      expect(component.draft().sentence).toBe('他很顽固。');
+    });
+
+    it('resets to automatic for the next card after save-and-add-another', async () => {
+      await component.setTerm('顽固');
+      component.setSentence('mine');
 
       await component.save(true);
 
-      expect(component.showExamples()).toBe(false);
+      expect(component.sentenceMode()).toBe('auto');
       expect(component.exampleResults()).toEqual([]);
+      expect(component.showExamples()).toBe(false);
+    });
+
+    it('never swaps the sentence on a card being edited', async () => {
+      const card = makeCard({ deckId: deck.id, term: '顽固', sentence: '我原来写的句子。' });
+      await db.cards.put(card);
+      params = { cardId: card.id };
+
+      await mount();
+
+      expect(component.sentenceMode()).toBe('manual');
+      expect(component.draft().sentence).toBe('我原来写的句子。');
+    });
+
+    it('starts the corpus download when the editor opens, not on the first keystroke', () => {
+      expect(examples.loadCount).toBeGreaterThan(0);
     });
   });
 });

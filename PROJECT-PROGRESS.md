@@ -80,8 +80,13 @@ drawn), a real sentence it was met in, and its pinyin.
   dev and 404s on GitHub Pages under `--base-href /flashcard/`.
 - **The vendored recogniser is byte-identical to upstream plus one line.** See
   `src/app/shared/handwriting/vendor/README.md` before re-vendoring.
-- **Corpus coverage is thin above ~HSK 5.** Tatoeba skews beginner; 顽固, the
-  app's own placeholder word, has zero sentences. The empty state says so.
+- **Corpus coverage is thin above ~HSK 5.** Tatoeba skews beginner. 顽固 has
+  **zero** sentences, which is why it is no longer the placeholder — the first
+  word anyone typed produced nothing and read as a broken feature. Placeholders
+  now use 突然 (56 hits). Check coverage before changing them again.
+- **Field 2 auto-fills, and must not clobber a typed sentence.** `sentenceMode`
+  mirrors `pinyinMode`: typing takes it over, emptying the box hands it back,
+  and editing a saved card is always `manual`.
 - **Never import `AutoBackupService` from `app.config.ts` statically.** It pulls
   Dexie and the backup layer into the initial bundle — measured at +107 kB, on a
   feature phones cannot use. The app initializer feature-detects first and only

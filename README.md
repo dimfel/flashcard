@@ -7,8 +7,9 @@ Every card carries three authored fields:
 
 1. **Word** — the vocab item (顽固). Type it, or **draw it** on the handwriting
    pad if you have no Chinese IME to hand.
-2. **Sentence** — a real sentence you met it in. Type it, or pull one from a
-   bundled Tatoeba corpus.
+2. **Sentence** — fills itself in from a bundled Tatoeba corpus the moment
+   there's a word above, with the other matches one tap away. Type your own and
+   it stays put.
 3. **Pinyin** — derived from the word automatically, and editable when the
    derivation guesses a polyphone wrong.
 
@@ -35,10 +36,13 @@ npx ng build      # production build into dist/
 - **Pinyin on tap.** `pinyin-pro` converts the whole term at once, so it resolves
   polyphones from context — 银行 comes out `yín háng`, 行走 comes out `xíng zǒu`.
   Type over the field to correct it; clear it to hand control back.
-- **Example sentences.** 38k filtered Chinese–English pairs from Tatoeba ship as
-  a 2.5 MB file, fetched the first time you press the button and cached after.
-  Coverage is good for common words and thin above roughly HSK 5 — Tatoeba skews
-  beginner, and plenty of advanced words simply aren't in it.
+- **Example sentences, filled in for you.** 38k filtered Chinese–English pairs
+  from Tatoeba ship as a 2.5 MB file, fetched when the Add-card screen opens and
+  cached by the service worker after. Enter a word and field 2 and its
+  translation appear; `Other examples` swaps in a different one. Coverage is good
+  for common words and thin above roughly HSK 5 — Tatoeba skews beginner, and
+  plenty of advanced words (顽固, for one) simply aren't in it. When there's no
+  match the field says so and waits for you to type the sentence yourself.
 - **FSRS scheduling** via [`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs),
   wrapped in `core/review/scheduler.ts` so the algorithm never leaks into
   components.

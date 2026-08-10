@@ -81,8 +81,30 @@ export class CardEditorComponent implements OnInit {
 
   readonly corpusDownloadLabel = CORPUS_DOWNLOAD_LABEL;
   readonly corpusStatus = this.examples.status;
-  readonly showExamples = signal(false);
+
+  /**
+   * Whether field 2 still tracks the term.
+   *
+   * Same contract as `pinyinMode`: typing your own sentence takes it over,
+   * emptying the box hands it back.
+   */
+  readonly sentenceMode = signal<'auto' | 'manual'>('auto');
+
+  /** Every corpus hit for the current term; the first one is what got filled in. */
   readonly exampleResults = signal<readonly ExampleSentence[]>([]);
+
+  /** The corpus has been searched for this term and had nothing. */
+  readonly noExample = signal(false);
+
+  /** Whether the alternative-sentences list is expanded. */
+  readonly showExamples = signal(false);
+
+  private exampleSeq = 0;
+
+  /** Alternatives to the sentence currently in the box. */
+  readonly otherExamples = computed(() =>
+    this.exampleResults().filter((example) => example.chinese !== this.draft().sentence),
+  );
 
   readonly isEdit = computed(() => this.editing() !== null);
   readonly canSave = computed(
@@ -112,6 +134,15 @@ export class CardEditorComponent implements OnInit {
     const cardId = this.route.snapshot.paramMap.get('cardId');
     const deckId = this.route.snapshot.paramMap.get('deckId');
 
+    if (!cardId) {
+      // Start the corpus download now rather than on the first keystroke, so
+      // the sentence is usually there the instant the word is. Not awaited —
+      // the editor must be usable while it arrives. Only when adding: editing
+      // an existing card keeps its own sentence and never needs the corpus,
+      // and `fillExample` fetches on demand if the box is later emptied.
+      void this.examples.load();
+    }
+
     if (cardId) {
       const card = await this.cardStore.get(cardId);
       if (!card) {
@@ -131,6 +162,9 @@ export class CardEditorComponent implements OnInit {
       // re-deriving here would silently overwrite a correction the moment the
       // card was reopened. A card saved without pinyin gets it backfilled.
       this.pinyinMode.set(card.reading?.trim() ? 'manual' : 'auto');
+      // A saved card's sentence is always deliberate — it is required to save —
+      // so editing one never swaps it for a corpus example.
+      this.sentenceMode.set('manual');
       this.showDetails.set(this.hasDetails());
       this.deck.set((await this.deckStore.get(card.deckId)) ?? null);
       await this.derivePinyin(card.term);
@@ -164,38 +198,79 @@ export class CardEditorComponent implements OnInit {
     }
   }
 
+  setSentence(value: string): void {
+    this.patch({ sentence: value });
+    this.sentenceMode.set(value.trim() ? 'manual' : 'auto');
+  }
+
+  /** Throws away a hand-written sentence and goes back to the corpus. */
+  async refillExample(): Promise<void> {
+    this.sentenceMode.set('auto');
+    await this.fillExample(this.draft().term);
+  }
+
   /**
-   * Looks the current word up in the bundled corpus, downloading it on the
-   * first use. Kept behind an explicit tap rather than firing as you type: it
-   * is a multi-megabyte download, and volunteering it would be rude.
+   * Swaps in a different corpus hit. Stays in `auto` mode: picking from the
+   * list is still the corpus choosing, so changing the word afterwards should
+   * still refill.
    */
-  async findExamples(): Promise<void> {
-    const term = this.draft().term.trim();
-    if (!term) {
+  pickExample(example: ExampleSentence): void {
+    this.patch({ sentence: example.chinese, sentenceTranslation: example.english });
+    this.showExamples.set(false);
+  }
+
+  /**
+   * Fills field 2 from the bundled corpus as soon as there is a word to look up.
+   *
+   * The corpus is a couple of megabytes, fetched once and then served from the
+   * service worker — `load()` is also kicked off when the editor opens, so by
+   * the time a word has been typed it is usually already here.
+   */
+  private async fillExample(term: string): Promise<void> {
+    if (this.sentenceMode() !== 'auto') {
       return;
     }
 
-    this.showExamples.set(true);
+    const seq = ++this.exampleSeq;
+    const trimmed = term.trim();
+    if (!trimmed) {
+      this.clearAutoSentence();
+      return;
+    }
+
     await this.examples.load();
-    // Re-read the term: the corpus download can take a while on a phone, and
-    // the user may have kept typing.
-    this.exampleResults.set(this.examples.search(this.draft().term.trim()));
+
+    // Same three-way staleness guard as the pinyin derivation: the download can
+    // outlast the keystroke that started it.
+    if (seq !== this.exampleSeq) {
+      return;
+    }
+    if (this.sentenceMode() !== 'auto') {
+      return;
+    }
+    if (this.draft().term.trim() !== trimmed) {
+      return;
+    }
+
+    const matches = this.examples.search(trimmed);
+    this.exampleResults.set(matches);
+    this.noExample.set(matches.length === 0);
+
+    const best = matches[0];
+    if (best) {
+      this.patch({ sentence: best.chinese, sentenceTranslation: best.english });
+    } else {
+      // Clear rather than leave the previous word's sentence sitting there
+      // looking like it belongs to this one.
+      this.patch({ sentence: '', sentenceTranslation: '' });
+    }
   }
 
-  /** Fills field 2 and its translation from a corpus hit. */
-  pickExample(example: ExampleSentence): void {
-    this.patch({ sentence: example.chinese, sentenceTranslation: example.english });
-    // Open the details section so the translation that just arrived is visible
-    // rather than silently filed away behind the toggle.
-    this.showDetails.set(true);
-    this.showExamples.set(false);
+  private clearAutoSentence(): void {
+    this.patch({ sentence: '', sentenceTranslation: '' });
     this.exampleResults.set([]);
-    queueMicrotask(() => this.sentenceInput()?.nativeElement.focus());
-  }
-
-  closeExamples(): void {
+    this.noExample.set(false);
     this.showExamples.set(false);
-    this.exampleResults.set([]);
   }
 
   /**
@@ -213,7 +288,9 @@ export class CardEditorComponent implements OnInit {
    */
   async setTerm(value: string): Promise<void> {
     this.patch({ term: value });
-    await this.derivePinyin(value);
+    // Run together: the pinyin dictionary and the corpus are independent
+    // downloads, and serialising them would double the wait on a cold start.
+    await Promise.all([this.derivePinyin(value), this.fillExample(value)]);
   }
 
   setPinyin(value: string): void {
@@ -342,7 +419,10 @@ export class CardEditorComponent implements OnInit {
         this.selection.set('');
         this.pinyinMode.set('auto');
         this.alternates.set([]);
-        this.closeExamples();
+        this.sentenceMode.set('auto');
+        this.exampleResults.set([]);
+        this.noExample.set(false);
+        this.showExamples.set(false);
         this.flashSaved();
         queueMicrotask(() => this.termInput()?.nativeElement.focus());
       } else {
