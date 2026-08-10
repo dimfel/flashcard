@@ -1,5 +1,5 @@
 import { InjectionToken } from '@angular/core';
-import { db, FlashcardDb } from './flashcard-db';
+import { getDb, FlashcardDb } from './flashcard-db';
 
 /**
  * The database, injected rather than imported directly, so a test can swap in a
@@ -7,5 +7,5 @@ import { db, FlashcardDb } from './flashcard-db';
  */
 export const FLASHCARD_DB = new InjectionToken<FlashcardDb>('FLASHCARD_DB', {
   providedIn: 'root',
-  factory: () => db,
+  factory: () => getDb(),
 });

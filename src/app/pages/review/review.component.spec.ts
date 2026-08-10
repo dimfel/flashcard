@@ -2,9 +2,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { State } from 'ts-fsrs';
-import { closeDb, freshDb, makeDeck, provideTestDb } from '../../../testing/db-harness';
+import { closeDb, freshDb, provideTestDb } from '../../../testing/db-harness';
+import { makeDeck, makeDraft } from '../../../testing/fixtures';
 import type { FlashcardDb } from '../../core/db/flashcard-db';
-import { CardStore, emptyDraft } from '../../core/state/card.store';
+import { CardStore } from '../../core/state/card.store';
 import { ReviewComponent } from './review.component';
 
 describe('ReviewComponent', () => {
@@ -38,19 +39,18 @@ describe('ReviewComponent', () => {
       ],
     });
 
-    await TestBed.inject(CardStore).create(deck, {
-      ...emptyDraft(),
-      term: '顽固',
-      sentence: '他顽固地拒绝了。',
-      meaning: 'stubborn',
-      usage: { note: 'Pejorative.', collocations: [], contrasts: [] },
-    });
+    await TestBed.inject(CardStore).create(
+      deck,
+      makeDraft({ sentence: '他顽固地拒绝了。', meaning: 'stubborn' }),
+    );
 
     fixture = TestBed.createComponent(ReviewComponent);
     component = fixture.componentInstance;
-    // Awaited explicitly: `whenStable` settles change detection, not a floating
-    // async ngOnInit, so without this the session hasn't loaded yet.
-    await component.ngOnInit();
+    // Angular owns the lifecycle hook; calling it here as well would start the
+    // session twice, and the second one would still be in flight during the
+    // assertions. `ngOnInit` registers its work as a pending task, so this
+    // waits for the session to actually load.
+    await fixture.whenStable();
   });
 
   afterEach(async () => {

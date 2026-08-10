@@ -1,38 +1,123 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { signal } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { closeDb, freshDb, makeDeck, provideTestDb } from '../../../testing/db-harness';
+import { closeDb, freshDb, provideTestDb } from '../../../testing/db-harness';
+import { makeCard, makeDeck } from '../../../testing/fixtures';
 import type { FlashcardDb } from '../../core/db/flashcard-db';
+import { PinyinService, type PinyinAlternate } from '../../core/pinyin/pinyin.service';
+import { ExampleSentenceService } from '../../core/corpus/example-sentence.service';
+import type { ExampleSentence } from '../../core/corpus/corpus';
 import { CardEditorComponent } from './card-editor.component';
+
+function deferred(): { promise: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => (release = resolve));
+  return { promise, release };
+}
+
+/**
+ * A dictionary-free stand-in for PinyinService. The real one is exercised in
+ * its own spec; here the point is *when* the editor derives, not what the
+ * dictionary says — and a gate lets a derivation be held open mid-flight to
+ * reproduce the slow-first-load race.
+ */
+class FakePinyinService {
+  readonly ready = signal(false);
+  readonly converted: string[] = [];
+  /** While set, `convert` blocks until released. */
+  gate?: { promise: Promise<void>; release: () => void };
+
+  private readonly readings: Record<string, string> = {
+    顽: 'wán',
+    顽固: 'wán gù',
+    银行: 'yín háng',
+    发生: 'fā shēng',
+  };
+
+  async convert(term: string): Promise<string> {
+    this.converted.push(term);
+    if (this.gate) {
+      await this.gate.promise;
+    }
+    return this.readings[term] ?? term;
+  }
+
+  async alternates(term: string): Promise<PinyinAlternate[]> {
+    if (term !== '银行') {
+      return [];
+    }
+    return [{ index: 1, char: '行', options: ['háng', 'xíng'] }];
+  }
+}
+
+/** Stands in for the 2.5 MB corpus; the real search is covered in corpus.spec. */
+class FakeExampleService {
+  readonly status = signal<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  results: ExampleSentence[] = [
+    { chinese: '他很顽固。', english: 'He is stubborn.' },
+  ];
+  loadCount = 0;
+
+  async load(): Promise<void> {
+    this.loadCount++;
+    this.status.set('ready');
+  }
+
+  search(term: string): ExampleSentence[] {
+    return this.results.filter((entry) => entry.chinese.includes(term));
+  }
+}
 
 describe('CardEditorComponent', () => {
   let db: FlashcardDb;
   let fixture: ComponentFixture<CardEditorComponent>;
   let component: CardEditorComponent;
+  let pinyin: FakePinyinService;
+  let examples: FakeExampleService;
+  let params: Record<string, string>;
 
   const deck = makeDeck();
+
+  /** Builds the component against whatever `params` currently holds. */
+  async function mount(): Promise<void> {
+    fixture?.destroy();
+    fixture = TestBed.createComponent(CardEditorComponent);
+    component = fixture.componentInstance;
+    // Angular owns the lifecycle hook; calling it here as well would load the
+    // card twice. `ngOnInit` registers its work as a pending task, so this
+    // waits for the deck and card to actually arrive.
+    await fixture.whenStable();
+  }
 
   beforeEach(async () => {
     db = freshDb();
     await db.decks.put(deck);
+    pinyin = new FakePinyinService();
+    examples = new FakeExampleService();
+    params = { deckId: deck.id };
 
     TestBed.configureTestingModule({
       imports: [CardEditorComponent],
       providers: [
         provideTestDb(db),
         provideRouter([]),
+        { provide: PinyinService, useValue: pinyin },
+        { provide: ExampleSentenceService, useValue: examples },
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { paramMap: convertToParamMap({ deckId: deck.id }) } },
+          useValue: {
+            snapshot: {
+              get paramMap() {
+                return convertToParamMap(params);
+              },
+            },
+          },
         },
       ],
     });
 
-    fixture = TestBed.createComponent(CardEditorComponent);
-    component = fixture.componentInstance;
-    // Awaited explicitly: `whenStable` settles change detection, not a floating
-    // async ngOnInit, so without this the deck hasn't loaded and saves no-op.
-    await component.ngOnInit();
+    await mount();
   });
 
   afterEach(async () => {
@@ -103,21 +188,23 @@ describe('CardEditorComponent', () => {
     expect(await db.cards.count()).toBe(0);
   });
 
-  it('promotes the highlighted sentence fragment to the term', () => {
+  it('promotes the highlighted sentence fragment to the term', async () => {
     component.patch({ sentence: '他顽固地拒绝了。' });
     component.selection.set('顽固');
 
-    component.useSelectionAsTerm();
+    await component.useSelectionAsTerm();
 
     expect(component.draft().term).toBe('顽固');
     expect(component.selection()).toBe('');
+    // Promoting a word must derive its pinyin too, or field 3 lags field 1.
+    expect(component.draft().reading).toBe('wán gù');
   });
 
-  it('leaves the term alone when nothing is highlighted', () => {
+  it('leaves the term alone when nothing is highlighted', async () => {
     component.patch({ term: 'existing' });
     component.selection.set('');
 
-    component.useSelectionAsTerm();
+    await component.useSelectionAsTerm();
 
     expect(component.draft().term).toBe('existing');
   });
@@ -126,24 +213,190 @@ describe('CardEditorComponent', () => {
     expect(component.showDetails()).toBe(false);
   });
 
-  it('edits contrasts by index without disturbing its neighbours', () => {
-    component.addContrast();
-    component.addContrast();
+  it('parses comma-separated tags, accepting the full-width comma too', () => {
+    component.setTags('hsk6，reading, ');
 
-    component.updateContrast(1, { with: '固执' });
-
-    expect(component.draft().usage.contrasts).toEqual([
-      { with: '', note: '' },
-      { with: '固执', note: '' },
-    ]);
-
-    component.removeContrast(0);
-    expect(component.draft().usage.contrasts).toEqual([{ with: '固执', note: '' }]);
+    expect(component.draft().tags).toEqual(['hsk6', 'reading']);
   });
 
-  it('parses comma-separated lists, accepting the full-width comma too', () => {
-    component.setCollocations('顽固不化，顽固分子, ');
+  describe('pinyin', () => {
+    it('fills field 3 in from the word', async () => {
+      await component.setTerm('顽固');
 
-    expect(component.draft().usage.collocations).toEqual(['顽固不化', '顽固分子']);
+      expect(component.draft().reading).toBe('wán gù');
+      expect(component.pinyinMode()).toBe('auto');
+    });
+
+    it('clears field 3 when the word is emptied', async () => {
+      await component.setTerm('顽固');
+      await component.setTerm('');
+
+      expect(component.draft().reading).toBe('');
+    });
+
+    it('keeps a manual correction when the word changes afterwards', async () => {
+      await component.setTerm('顽固');
+      component.setPinyin('wan2 gu4');
+
+      await component.setTerm('发生');
+
+      expect(component.pinyinMode()).toBe('manual');
+      expect(component.draft().reading).toBe('wan2 gu4');
+    });
+
+    it('re-arms automatic filling when the field is cleared', async () => {
+      await component.setTerm('顽固');
+      component.setPinyin('wrong');
+      expect(component.pinyinMode()).toBe('manual');
+
+      component.setPinyin('');
+      expect(component.pinyinMode()).toBe('auto');
+
+      await component.setTerm('发生');
+      expect(component.draft().reading).toBe('fā shēng');
+    });
+
+    it('re-derives on demand, discarding a manual override', async () => {
+      await component.setTerm('顽固');
+      component.setPinyin('nonsense');
+
+      await component.rederivePinyin();
+
+      expect(component.draft().reading).toBe('wán gù');
+      expect(component.pinyinMode()).toBe('auto');
+    });
+
+    it('discards a slow derivation whose word has already moved on', async () => {
+      const gate = deferred();
+      pinyin.gate = gate;
+
+      // Starts deriving '顽' but blocks, as the first call does while the
+      // dictionary chunk downloads.
+      const stale = component.setTerm('顽');
+      pinyin.gate = undefined;
+
+      // The user finishes typing in the meantime.
+      await component.setTerm('顽固');
+      gate.release();
+      await stale;
+
+      expect(component.draft().reading).toBe('wán gù');
+    });
+
+    it('offers alternatives for a polyphonic character and applies the choice', async () => {
+      await component.setTerm('银行');
+      expect(component.draft().reading).toBe('yín háng');
+
+      const [alternate] = component.alternates();
+      expect(alternate.char).toBe('行');
+
+      component.chooseAlternate(alternate, 'xíng');
+
+      expect(component.draft().reading).toBe('yín xíng');
+      // Picking a reading by hand is a decision, so auto-fill stands down.
+      expect(component.pinyinMode()).toBe('manual');
+    });
+
+    it('resets to automatic for the next card after save-and-add-another', async () => {
+      await component.setTerm('顽固');
+      component.setPinyin('manual override');
+      component.patch({ sentence: '他顽固地拒绝了。' });
+
+      await component.save(true);
+
+      expect(component.pinyinMode()).toBe('auto');
+      expect(component.alternates()).toEqual([]);
+    });
+
+    it('does not re-derive over pinyin already saved on a card', async () => {
+      const card = makeCard({ deckId: deck.id, reading: 'hand written' });
+      await db.cards.put(card);
+      params = { cardId: card.id };
+
+      await mount();
+
+      expect(component.pinyinMode()).toBe('manual');
+      expect(component.draft().reading).toBe('hand written');
+      expect(pinyin.converted).not.toContain(card.term);
+    });
+
+    it('does not download the corpus just by editing a card', () => {
+      expect(examples.loadCount).toBe(0);
+    });
+
+    it('backfills pinyin on a card that was saved without any', async () => {
+      const card = makeCard({ deckId: deck.id, term: '顽固', reading: undefined });
+      await db.cards.put(card);
+      params = { cardId: card.id };
+
+      await mount();
+
+      expect(component.pinyinMode()).toBe('auto');
+      expect(component.draft().reading).toBe('wán gù');
+    });
+  });
+
+  describe('example sentences', () => {
+    it('does nothing without a word to search for', async () => {
+      await component.findExamples();
+
+      expect(examples.loadCount).toBe(0);
+      expect(component.showExamples()).toBe(false);
+    });
+
+    it('downloads the corpus on demand and lists matches', async () => {
+      await component.setTerm('顽固');
+
+      await component.findExamples();
+
+      expect(examples.loadCount).toBe(1);
+      expect(component.showExamples()).toBe(true);
+      expect(component.exampleResults()).toEqual([
+        { chinese: '他很顽固。', english: 'He is stubborn.' },
+      ]);
+    });
+
+    it('reports an empty result rather than pretending', async () => {
+      await component.setTerm('发生');
+
+      await component.findExamples();
+
+      expect(component.exampleResults()).toEqual([]);
+    });
+
+    it('fills the sentence and its translation from a pick', async () => {
+      await component.setTerm('顽固');
+      await component.findExamples();
+
+      component.pickExample(component.exampleResults()[0]);
+
+      expect(component.draft().sentence).toBe('他很顽固。');
+      expect(component.draft().sentenceTranslation).toBe('He is stubborn.');
+      // The translation lives behind the details toggle, so opening it is the
+      // difference between "it worked" and "nothing happened".
+      expect(component.showDetails()).toBe(true);
+      expect(component.showExamples()).toBe(false);
+    });
+
+    it('leaves the term-not-in-sentence warning quiet after a pick', async () => {
+      await component.setTerm('顽固');
+      await component.findExamples();
+
+      component.pickExample(component.exampleResults()[0]);
+
+      expect(component.termMissingFromSentence()).toBe(false);
+      expect(component.canSave()).toBe(true);
+    });
+
+    it('closes the panel when the next card starts', async () => {
+      await component.setTerm('顽固');
+      component.patch({ sentence: '他很顽固。' });
+      await component.findExamples();
+
+      await component.save(true);
+
+      expect(component.showExamples()).toBe(false);
+      expect(component.exampleResults()).toEqual([]);
+    });
   });
 });

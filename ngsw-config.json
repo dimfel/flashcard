@@ -23,6 +23,15 @@
       "resources": {
         "files": ["/**/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"]
       }
+    },
+    {
+      "name": "data",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": { "ignoreVary": true },
+      "resources": {
+        "files": ["/hanzi/**", "/corpus/**", "/licenses/**"]
+      }
     }
   ]
 }

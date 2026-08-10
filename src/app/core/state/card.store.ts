@@ -1,14 +1,13 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { FLASHCARD_DB } from '../db/db.token';
 import { deleteCardCascade, directionsFor } from '../db/queries';
-import { emptyUsageNote, type Card, type Deck, type UsageNote } from '../models/card.types';
+import { type Card, type Deck } from '../models/card.types';
 import { newSchedulingRows } from '../review/scheduler';
 
 /** The authored part of a card — what the editor collects. */
 export interface CardDraft {
   term: string;
   sentence: string;
-  usage: UsageNote;
   reading?: string;
   meaning?: string;
   sentenceTranslation?: string;
@@ -19,7 +18,6 @@ export function emptyDraft(): CardDraft {
   return {
     term: '',
     sentence: '',
-    usage: emptyUsageNote(),
     reading: '',
     meaning: '',
     sentenceTranslation: '',
@@ -102,9 +100,7 @@ export class CardStore {
       card.sentence,
       card.reading,
       card.meaning,
-      card.usage.note,
-      ...card.usage.collocations,
-      ...card.usage.contrasts.flatMap((contrast) => [contrast.with, contrast.note]),
+      card.sentenceTranslation,
       ...card.tags,
     ];
     return haystack.some((value) => value?.toLowerCase().includes(query));
@@ -120,14 +116,6 @@ function normalise(draft: CardDraft) {
     meaning: blankToUndefined(draft.meaning),
     sentenceTranslation: blankToUndefined(draft.sentenceTranslation),
     tags: draft.tags.map((tag) => tag.trim()).filter(Boolean),
-    usage: {
-      note: draft.usage.note.trim(),
-      register: draft.usage.register,
-      collocations: draft.usage.collocations.map((c) => c.trim()).filter(Boolean),
-      contrasts: draft.usage.contrasts
-        .map((contrast) => ({ with: contrast.with.trim(), note: contrast.note.trim() }))
-        .filter((contrast) => contrast.with || contrast.note),
-    } satisfies UsageNote,
   };
 }
 

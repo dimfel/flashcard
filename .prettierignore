@@ -1,0 +1,8 @@
+# Third-party code, kept byte-identical to upstream so it can be re-vendored
+# by diffing against the release. See the README beside it.
+src/app/shared/handwriting/vendor/hanzilookup.min.js
+
+# Generated data files. Large, machine-written, and reformatting them would
+# balloon the diff for no benefit.
+public/hanzi/
+public/corpus/

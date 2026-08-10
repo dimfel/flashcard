@@ -12,7 +12,8 @@
 import type { Card, Deck, ReviewLog, Scheduling, Settings } from '../models/card.types';
 
 export const BACKUP_FORMAT = 'flashcard-backup';
-export const BACKUP_VERSION = 1;
+/** v2 dropped the structured `usage` note from a card. v1 files still import. */
+export const BACKUP_VERSION = 2;
 
 export interface BackupFile {
   format: typeof BACKUP_FORMAT;
@@ -79,18 +80,16 @@ function reviveScheduling(row: Scheduling): Scheduling {
   return { ...row, fsrs, due: fsrs.due.getTime() };
 }
 
-/** Guards against a hand-edited file missing the collection fields on field 3. */
+/**
+ * Normalises an incoming card.
+ *
+ * Drops the pre-v2 `usage` note if the file still carries one, keyed off the
+ * property rather than the file's `version` so a hand-edited or mislabelled
+ * backup is handled the same way. Idempotent.
+ */
 function reviveCard(card: Card): Card {
-  return {
-    ...card,
-    tags: card.tags ?? [],
-    usage: {
-      note: card.usage?.note ?? '',
-      register: card.usage?.register,
-      collocations: card.usage?.collocations ?? [],
-      contrasts: card.usage?.contrasts ?? [],
-    },
-  };
+  const { usage: _dropped, ...rest } = card as Card & { usage?: unknown };
+  return { ...rest, tags: card.tags ?? [] };
 }
 
 /**

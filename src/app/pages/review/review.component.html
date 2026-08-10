@@ -1,4 +1,4 @@
-@if (notFound()) {
+﻿@if (notFound()) {
   <div class="empty-state">
     <p>That deck no longer exists.</p>
     <a class="btn" routerLink="/decks">Back to decks</a>
@@ -50,7 +50,7 @@
       }}
     </p>
 
-    <p class="prompt term-text" [class.prompt-sentence]="isProduction()" [lang]="deck()?.language">
+    <p class="prompt term-text" [class.prompt-sentence]="isProduction()" lang="zh-Hans">
       {{ prompt() }}
     </p>
 
@@ -61,7 +61,7 @@
     } @else {
       <div class="answer">
         @if (isProduction()) {
-          <p class="answer-term term-text" [lang]="deck()?.language">{{ item.card.term }}</p>
+          <p class="answer-term term-text" lang="zh-Hans">{{ item.card.term }}</p>
         }
 
         @if (item.card.reading || item.card.meaning) {
@@ -76,41 +76,12 @@
         }
 
         @if (!isProduction()) {
-          <p class="sentence term-text" [lang]="deck()?.language">{{ item.card.sentence }}</p>
+          <p class="sentence term-text" lang="zh-Hans">{{ item.card.sentence }}</p>
         }
         @if (item.card.sentenceTranslation) {
           <p class="translation">{{ item.card.sentenceTranslation }}</p>
         }
 
-        @if (item.card.usage.note || item.card.usage.register) {
-          <div class="usage">
-            @if (item.card.usage.register) {
-              <span class="chip chip-accent">{{ item.card.usage.register }}</span>
-            }
-            @if (item.card.usage.note) {
-              <p class="usage-note">{{ item.card.usage.note }}</p>
-            }
-          </div>
-        }
-
-        @if (item.card.usage.collocations.length) {
-          <p class="chip-row">
-            @for (collocation of item.card.usage.collocations; track collocation) {
-              <span class="chip term-text" [lang]="deck()?.language">{{ collocation }}</span>
-            }
-          </p>
-        }
-
-        @if (item.card.usage.contrasts.length) {
-          <ul class="contrast-list">
-            @for (contrast of item.card.usage.contrasts; track $index) {
-              <li>
-                <span class="term-text" [lang]="deck()?.language">{{ contrast.with }}</span>
-                — {{ contrast.note }}
-              </li>
-            }
-          </ul>
-        }
       </div>
     }
   </section>

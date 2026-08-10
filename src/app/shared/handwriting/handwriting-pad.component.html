@@ -1,0 +1,56 @@
+<div class="pad">
+  <canvas
+    #canvas
+    class="pad-canvas"
+    aria-label="Draw a Chinese character"
+    role="img"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp($event)"
+    (pointercancel)="onPointerUp($event)"
+    (lostpointercapture)="onPointerUp($event)"
+  ></canvas>
+
+  <div class="pad-actions">
+    <!-- Every button here is type="button" on purpose: this renders inside the
+         editor's <form>, and a default-type button would submit it. -->
+    <button type="button" class="btn btn-sm" (click)="undo()" [disabled]="!hasStrokes()">
+      Undo stroke
+    </button>
+    <button type="button" class="btn btn-sm" (click)="clear()" [disabled]="!hasStrokes()">
+      Clear
+    </button>
+  </div>
+
+  @switch (status()) {
+    @case ('loading') {
+      <p class="pad-status" role="status">Loading the recogniser (0.8 MB, once)…</p>
+    }
+    @case ('unavailable') {
+      <p class="pad-status pad-status-warn" role="status">
+        Handwriting data unavailable offline — connect once to download it.
+      </p>
+    }
+    @default {
+      @if (candidates().length) {
+        <div class="candidates" role="list" aria-label="Matching characters">
+          @for (candidate of candidates(); track candidate) {
+            <button
+              type="button"
+              role="listitem"
+              class="candidate term-text"
+              lang="zh-Hans"
+              (click)="pick(candidate)"
+            >
+              {{ candidate }}
+            </button>
+          }
+        </div>
+      } @else if (hasStrokes()) {
+        <p class="pad-status" role="status">No match — try undoing the last stroke.</p>
+      } @else {
+        <p class="pad-status">Draw one character, then tap the right match.</p>
+      }
+    }
+  }
+</div>

@@ -1,0 +1,70 @@
+DeckCard — third-party notices
+==============================
+
+DeckCard itself is licensed under the GNU General Public License v3.0.
+Full text: GPL-3.0.txt (in this folder), or https://www.gnu.org/licenses/gpl-3.0.txt
+
+The app is GPL-3.0 because it bundles HanziLookupJS, which is GPL-3.0; the
+combined work must be distributed under the same terms. Source for the whole
+app is published at https://github.com/dimfel/flashcard
+
+
+HanziLookupJS — handwriting recognition
+---------------------------------------
+Copyright (c) Gabor Ugray, based on HanziLookup by Jordan Kiang.
+https://github.com/gugray/HanziLookupJS
+Licence: GNU General Public License v3.0 — see GPL-3.0.txt
+
+Vendored at src/app/shared/handwriting/vendor/hanzilookup.min.js with a single
+appended line (`export default HanziLookup;`). See the README beside it.
+
+
+Make Me a Hanzi — stroke database (public/hanzi/mmah.json)
+----------------------------------------------------------
+Copyright (c) Shaunak Kishore.
+https://github.com/skishore/makemeahanzi
+Derived from Arphic Technology's fonts and distributed under the
+Arphic Public License — see Arphic-Public-License.txt
+
+Upstream's own notice about component provenance is in
+makemeahanzi-COPYING.txt
+
+
+Tatoeba — example sentences (public/corpus/cmn-eng.tsv)
+-------------------------------------------------------
+Copyright (c) Tatoeba contributors.
+https://tatoeba.org
+Licence: Creative Commons Attribution 2.0 France (CC BY 2.0 FR)
+https://creativecommons.org/licenses/by/2.0/fr/
+
+The shipped file is a filtered and deduplicated subset of the Chinese-English
+sentence pairs, built by scripts/build-corpus.mjs. Retrieval date and line
+count are recorded in public/corpus/cmn-eng.meta.json
+
+
+pinyin-pro — pinyin conversion
+------------------------------
+Copyright (c) zh-lx.
+https://github.com/zh-lx/pinyin-pro
+Licence: MIT
+
+
+ts-fsrs — spaced-repetition scheduling
+--------------------------------------
+Copyright (c) Open Spaced Repetition.
+https://github.com/open-spaced-repetition/ts-fsrs
+Licence: MIT
+
+
+Dexie.js — IndexedDB wrapper
+----------------------------
+Copyright (c) David Fahlander.
+https://github.com/dexie/Dexie.js
+Licence: Apache-2.0
+
+
+Angular
+-------
+Copyright (c) Google LLC.
+https://angular.dev
+Licence: MIT

@@ -5,6 +5,7 @@ import {
   HostListener,
   inject,
   OnInit,
+  PendingTasks,
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -34,6 +35,7 @@ export class ReviewComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly deckStore = inject(DeckStore);
   protected readonly session = inject(ReviewSessionStore);
+  private readonly pendingTasks = inject(PendingTasks);
 
   readonly deck = signal<Deck | null>(null);
   readonly notFound = signal(false);
@@ -49,7 +51,17 @@ export class ReviewComponent implements OnInit {
 
   readonly isProduction = computed(() => this.current()?.scheduling.direction === 'production');
 
-  async ngOnInit(): Promise<void> {
+  /**
+   * Registered as a pending task rather than left as a floating promise, so
+   * `ApplicationRef.isStable` — and therefore `fixture.whenStable()` — accounts
+   * for the session load. Without it the app reports itself stable while the
+   * first card is still being fetched.
+   */
+  ngOnInit(): void {
+    void this.pendingTasks.run(() => this.load());
+  }
+
+  private async load(): Promise<void> {
     const deckId = this.route.snapshot.paramMap.get('deckId');
     if (!deckId) {
       this.notFound.set(true);

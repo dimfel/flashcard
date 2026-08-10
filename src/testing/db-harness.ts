@@ -4,10 +4,10 @@
  * away — the bugs worth catching in this app live in the read-back path.
  */
 
-import 'fake-indexeddb/auto';
+// `fake-indexeddb` is installed by `vitest-setup.ts`, which runs before any
+// spec module — see the note there for why it cannot live in an import here.
 import { FLASHCARD_DB } from '../app/core/db/db.token';
 import { FlashcardDb } from '../app/core/db/flashcard-db';
-import type { Deck } from '../app/core/models/card.types';
 
 let counter = 0;
 
@@ -32,13 +32,5 @@ export async function closeDb(db: FlashcardDb): Promise<void> {
   await db.delete();
 }
 
-export function makeDeck(overrides: Partial<Deck> = {}): Deck {
-  return {
-    id: 'deck-1',
-    name: 'Chinese — Reading',
-    language: 'zh-Hans',
-    productionEnabled: true,
-    createdAt: Date.now(),
-    ...overrides,
-  };
-}
+// Card, deck and draft factories live in `./fixtures` so the pure specs can use
+// them without dragging in fake-indexeddb.

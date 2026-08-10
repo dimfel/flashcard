@@ -19,6 +19,7 @@
     "@angular/router": "^21.2.0",
     "@angular/service-worker": "^21.2.0",
     "dexie": "^4.4.4",
+    "pinyin-pro": "^3.28.2",
     "rxjs": "~7.8.0",
     "ts-fsrs": "^5.4.1",
     "tslib": "^2.3.0"

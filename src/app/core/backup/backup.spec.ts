@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyCard, State } from 'ts-fsrs';
-import { schedulingFrom, type Card, type Deck, type Scheduling } from '../models/card.types';
+import { makeCard, makeDeck } from '../../../testing/fixtures';
+import { schedulingFrom, type Scheduling } from '../models/card.types';
 import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
@@ -13,32 +14,8 @@ import {
   type BackupFile,
 } from './backup';
 
-const deck: Deck = {
-  id: 'deck-1',
-  name: 'Chinese — Reading',
-  language: 'zh-Hans',
-  productionEnabled: true,
-  createdAt: 1_700_000_000_000,
-};
-
-const card: Card = {
-  id: 'card-1',
-  deckId: 'deck-1',
-  term: '顽固',
-  sentence: '他顽固地拒绝了所有建议。',
-  usage: {
-    note: '书面语气偏重，多含贬义。',
-    register: 'formal',
-    collocations: ['顽固不化', '顽固分子'],
-    contrasts: [{ with: '固执', note: '固执可中性；顽固几乎总是贬义。' }],
-  },
-  reading: 'wángù',
-  meaning: 'stubborn, obstinate',
-  sentenceTranslation: 'He stubbornly rejected every suggestion.',
-  tags: ['hsk6', 'reading'],
-  createdAt: 1_700_000_000_000,
-  updatedAt: 1_700_000_500_000,
-};
+const deck = makeDeck({ createdAt: 1_700_000_000_000 });
+const card = makeCard();
 
 function backupWith(overrides: Partial<BackupFile> = {}): BackupFile {
   const scheduling = schedulingFrom(
@@ -111,21 +88,37 @@ describe('parseBackup validation', () => {
     expect(() => parseBackup(future)).toThrow(/newer than this app understands/);
   });
 
-  it('tolerates a hand-edited card missing its usage collections', () => {
+  it('defaults tags on a hand-edited card that dropped them', () => {
     const stripped = JSON.stringify({
       ...backupWith(),
-      cards: [{ ...card, tags: undefined, usage: { note: 'kept' } }],
+      cards: [{ ...card, tags: undefined }],
     });
 
-    const restored = parseBackup(stripped);
+    expect(parseBackup(stripped).cards[0].tags).toEqual([]);
+  });
 
-    expect(restored.cards[0].usage).toEqual({
-      note: 'kept',
-      register: undefined,
-      collocations: [],
-      contrasts: [],
+  it('imports a v1 backup, dropping the usage note field 3 used to hold', () => {
+    const v1 = JSON.stringify({
+      ...backupWith(),
+      version: 1,
+      cards: [
+        {
+          ...card,
+          usage: {
+            note: '书面语气偏重，多含贬义。',
+            register: 'formal',
+            collocations: ['顽固不化'],
+            contrasts: [{ with: '固执', note: '固执可中性。' }],
+          },
+        },
+      ],
     });
-    expect(restored.cards[0].tags).toEqual([]);
+
+    const restored = parseBackup(v1);
+
+    expect(restored.cards[0]).not.toHaveProperty('usage');
+    expect(restored.cards[0].term).toBe('顽固');
+    expect(restored.cards[0].reading).toBe('wán gù');
   });
 });
 

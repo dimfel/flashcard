@@ -1,10 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Rating, State } from 'ts-fsrs';
-import { closeDb, freshDb, makeDeck, provideTestDb } from '../../../testing/db-harness';
+import { closeDb, freshDb, provideTestDb } from '../../../testing/db-harness';
+import { makeDeck, makeDraft } from '../../../testing/fixtures';
 import type { FlashcardDb } from '../db/flashcard-db';
 import { BLANK } from '../review/scheduler';
-import { CardStore, emptyDraft } from './card.store';
+import { CardStore } from './card.store';
 import { ReviewSessionStore } from './review-session.store';
 import { SettingsStore } from './settings.store';
 
@@ -24,13 +25,10 @@ describe('ReviewSessionStore', () => {
     settings = TestBed.inject(SettingsStore);
 
     await db.decks.put(deck);
-    await cards.create(deck, {
-      ...emptyDraft(),
-      term: '顽固',
-      sentence: '他顽固地拒绝了。',
-      meaning: 'stubborn',
-      usage: { note: 'Pejorative.', collocations: [], contrasts: [] },
-    });
+    await cards.create(
+      deck,
+      makeDraft({ sentence: '他顽固地拒绝了。', meaning: 'stubborn' }),
+    );
   });
 
   afterEach(async () => {

@@ -41,3 +41,18 @@
 .narrow {
   max-width: 8rem;
 }
+
+.credits {
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+
+  li {
+    margin-bottom: 0.4rem;
+  }
+
+  strong {
+    color: var(--text);
+  }
+}

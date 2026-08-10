@@ -1,24 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { State } from 'ts-fsrs';
-import { closeDb, freshDb, makeDeck, provideTestDb } from '../../../testing/db-harness';
+import { closeDb, freshDb, provideTestDb } from '../../../testing/db-harness';
+import { makeDeck, makeDraft as draft } from '../../../testing/fixtures';
 import type { FlashcardDb } from '../db/flashcard-db';
-import { CardStore, emptyDraft, type CardDraft } from './card.store';
-
-function draft(overrides: Partial<CardDraft> = {}): CardDraft {
-  return {
-    ...emptyDraft(),
-    term: '顽固',
-    sentence: '他顽固地拒绝了所有建议。',
-    usage: {
-      note: 'Almost always pejorative.',
-      register: 'formal',
-      collocations: ['顽固不化'],
-      contrasts: [{ with: '固执', note: '固执 can be neutral.' }],
-    },
-    ...overrides,
-  };
-}
+import { CardStore } from './card.store';
 
 describe('CardStore', () => {
   let db: FlashcardDb;
@@ -64,25 +50,12 @@ describe('CardStore', () => {
     expect(stored?.meaning).toBe('stubborn');
   });
 
-  it('drops empty collocations and contrasts rather than storing blanks', async () => {
-    const card = await store.create(
-      makeDeck(),
-      draft({
-        usage: {
-          note: 'kept',
-          collocations: ['顽固不化', '  ', ''],
-          contrasts: [
-            { with: '固执', note: 'differs' },
-            { with: '  ', note: '  ' },
-          ],
-        },
-      }),
-    );
+  it('drops blank tags rather than storing empties', async () => {
+    const card = await store.create(makeDeck(), draft({ tags: ['hsk6', '  ', '', ' reading '] }));
 
     const stored = await db.cards.get(card.id);
 
-    expect(stored?.usage.collocations).toEqual(['顽固不化']);
-    expect(stored?.usage.contrasts).toEqual([{ with: '固执', note: 'differs' }]);
+    expect(stored?.tags).toEqual(['hsk6', 'reading']);
   });
 
   it('removes scheduling and logs along with the card', async () => {
@@ -116,7 +89,7 @@ describe('CardStore', () => {
           term: '发生',
           sentence: '发生了什么？',
           meaning: 'to happen',
-          usage: { note: 'Intransitive.', collocations: ['发生事故'], contrasts: [] },
+          sentenceTranslation: 'What happened?',
           tags: ['news'],
         }),
       );
@@ -133,8 +106,8 @@ describe('CardStore', () => {
       expect(store.visible().map((card) => card.term)).toEqual(['顽固']);
     });
 
-    it('matches on collocations and tags, not just the headword', () => {
-      store.search.set('事故');
+    it('matches on the sentence translation and tags, not just the headword', () => {
+      store.search.set('what happened');
       expect(store.visible()).toHaveLength(1);
 
       store.search.set('news');

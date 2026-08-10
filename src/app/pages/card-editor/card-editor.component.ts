@@ -5,6 +5,7 @@ import {
   ElementRef,
   inject,
   OnInit,
+  PendingTasks,
   signal,
   viewChild,
 } from '@angular/core';
@@ -12,7 +13,14 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CardStore, emptyDraft, type CardDraft } from '../../core/state/card.store';
 import { DeckStore } from '../../core/state/deck.store';
-import { REGISTERS, type Card, type Deck, type Register } from '../../core/models/card.types';
+import { PinyinService, type PinyinAlternate } from '../../core/pinyin/pinyin.service';
+import { HandwritingPadComponent } from '../../shared/handwriting/handwriting-pad.component';
+import {
+  CORPUS_DOWNLOAD_LABEL,
+  ExampleSentenceService,
+} from '../../core/corpus/example-sentence.service';
+import type { ExampleSentence } from '../../core/corpus/corpus';
+import { type Card, type Deck } from '../../core/models/card.types';
 
 /**
  * The card editor.
@@ -25,7 +33,7 @@ import { REGISTERS, type Card, type Deck, type Register } from '../../core/model
 @Component({
   selector: 'app-card-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule],
+  imports: [FormsModule, HandwritingPadComponent],
   templateUrl: './card-editor.component.html',
   styleUrl: './card-editor.component.scss',
 })
@@ -34,11 +42,13 @@ export class CardEditorComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly cardStore = inject(CardStore);
   private readonly deckStore = inject(DeckStore);
+  private readonly pinyin = inject(PinyinService);
+  private readonly pendingTasks = inject(PendingTasks);
+  private readonly examples = inject(ExampleSentenceService);
 
   private readonly termInput = viewChild<ElementRef<HTMLInputElement>>('termInput');
   private readonly sentenceInput = viewChild<ElementRef<HTMLTextAreaElement>>('sentenceInput');
-
-  readonly registers = REGISTERS;
+  private readonly pad = viewChild(HandwritingPadComponent);
 
   readonly deck = signal<Deck | null>(null);
   readonly editing = signal<Card | null>(null);
@@ -51,22 +61,54 @@ export class CardEditorComponent implements OnInit {
   /** Text currently highlighted inside the sentence box, for "use as term". */
   readonly selection = signal('');
 
+  /**
+   * Whether field 3 still tracks the term.
+   *
+   * Flips to `manual` the moment the user types their own pinyin, and back to
+   * `auto` if they clear the field — so the escape hatch from a bad override is
+   * "empty the box", with no extra control to explain.
+   */
+  readonly pinyinMode = signal<'auto' | 'manual'>('auto');
+
+  /** Characters of the term with more than one reading, for the chip row. */
+  readonly alternates = signal<readonly PinyinAlternate[]>([]);
+
+  /** Guards against an earlier, slower derivation landing after a later one. */
+  private deriveSeq = 0;
+
+  /** Whether the handwriting pad is open under field 1. */
+  readonly showPad = signal(false);
+
+  readonly corpusDownloadLabel = CORPUS_DOWNLOAD_LABEL;
+  readonly corpusStatus = this.examples.status;
+  readonly showExamples = signal(false);
+  readonly exampleResults = signal<readonly ExampleSentence[]>([]);
+
   readonly isEdit = computed(() => this.editing() !== null);
   readonly canSave = computed(
     () => this.draft().term.trim().length > 0 && this.draft().sentence.trim().length > 0,
   );
 
   /**
-   * A warning, never a block. Inflected languages legitimately break the rule
-   * (「leave」 vs 「left」), so refusing to save would be wrong more often than
-   * it would be helpful.
+   * A warning, never a block. Chinese doesn't inflect, so a missing term is
+   * usually a typo — but a card can legitimately pair a word with a sentence
+   * that uses a variant, and refusing to save would be the wrong call there.
    */
   readonly termMissingFromSentence = computed(() => {
     const { term, sentence } = this.draft();
     return term.trim().length > 0 && sentence.trim().length > 0 && !sentence.includes(term.trim());
   });
 
-  async ngOnInit(): Promise<void> {
+  /**
+   * Registered as a pending task rather than left as a floating promise, so
+   * `ApplicationRef.isStable` — and therefore `fixture.whenStable()` — accounts
+   * for loading the card being edited.
+   */
+  ngOnInit(): void {
+    void this.pendingTasks.run(() => this.load());
+  }
+
+  private async load(): Promise<void> {
     const cardId = this.route.snapshot.paramMap.get('cardId');
     const deckId = this.route.snapshot.paramMap.get('deckId');
 
@@ -80,19 +122,18 @@ export class CardEditorComponent implements OnInit {
       this.draft.set({
         term: card.term,
         sentence: card.sentence,
-        usage: {
-          note: card.usage.note,
-          register: card.usage.register,
-          collocations: [...card.usage.collocations],
-          contrasts: card.usage.contrasts.map((contrast) => ({ ...contrast })),
-        },
         reading: card.reading ?? '',
         meaning: card.meaning ?? '',
         sentenceTranslation: card.sentenceTranslation ?? '',
         tags: [...card.tags],
       });
+      // Saved pinyin is treated as deliberate, whether it was derived or typed:
+      // re-deriving here would silently overwrite a correction the moment the
+      // card was reopened. A card saved without pinyin gets it backfilled.
+      this.pinyinMode.set(card.reading?.trim() ? 'manual' : 'auto');
       this.showDetails.set(this.hasDetails());
       this.deck.set((await this.deckStore.get(card.deckId)) ?? null);
+      await this.derivePinyin(card.term);
       return;
     }
 
@@ -110,47 +151,134 @@ export class CardEditorComponent implements OnInit {
     this.draft.update((draft) => ({ ...draft, ...patch }));
   }
 
-  patchUsage(patch: Partial<CardDraft['usage']>): void {
-    this.draft.update((draft) => ({ ...draft, usage: { ...draft.usage, ...patch } }));
+  togglePad(): void {
+    const opening = !this.showPad();
+    this.showPad.set(opening);
+    if (opening) {
+      // Start the 0.8 MB download while the user is still lifting their finger
+      // to the canvas, rather than after the first stroke.
+      queueMicrotask(() => {
+        void this.pad()?.prepare();
+        this.pad()?.redraw();
+      });
+    }
   }
 
-  setRegister(value: string): void {
-    this.patchUsage({ register: value ? (value as Register) : undefined });
+  /**
+   * Looks the current word up in the bundled corpus, downloading it on the
+   * first use. Kept behind an explicit tap rather than firing as you type: it
+   * is a multi-megabyte download, and volunteering it would be rude.
+   */
+  async findExamples(): Promise<void> {
+    const term = this.draft().term.trim();
+    if (!term) {
+      return;
+    }
+
+    this.showExamples.set(true);
+    await this.examples.load();
+    // Re-read the term: the corpus download can take a while on a phone, and
+    // the user may have kept typing.
+    this.exampleResults.set(this.examples.search(this.draft().term.trim()));
+  }
+
+  /** Fills field 2 and its translation from a corpus hit. */
+  pickExample(example: ExampleSentence): void {
+    this.patch({ sentence: example.chinese, sentenceTranslation: example.english });
+    // Open the details section so the translation that just arrived is visible
+    // rather than silently filed away behind the toggle.
+    this.showDetails.set(true);
+    this.showExamples.set(false);
+    this.exampleResults.set([]);
+    queueMicrotask(() => this.sentenceInput()?.nativeElement.focus());
+  }
+
+  closeExamples(): void {
+    this.showExamples.set(false);
+    this.exampleResults.set([]);
+  }
+
+  /**
+   * Appends rather than replaces: a word like 顽固 is drawn one character at a
+   * time, and each pick should extend the word rather than restart it.
+   */
+  async appendDrawnCharacter(character: string): Promise<void> {
+    await this.setTerm(this.draft().term + character);
+  }
+
+  /**
+   * The single funnel every term change goes through — typed, drawn on the
+   * handwriting pad, or promoted from the sentence — so pinyin can never go
+   * stale behind the word it describes.
+   */
+  async setTerm(value: string): Promise<void> {
+    this.patch({ term: value });
+    await this.derivePinyin(value);
+  }
+
+  setPinyin(value: string): void {
+    this.patch({ reading: value });
+    this.pinyinMode.set(value.trim() ? 'manual' : 'auto');
+  }
+
+  /** Throws away a manual override and re-derives from the term. */
+  async rederivePinyin(): Promise<void> {
+    this.pinyinMode.set('auto');
+    await this.derivePinyin(this.draft().term);
+  }
+
+  /** Picks a different reading for one polyphonic character. */
+  chooseAlternate(alternate: PinyinAlternate, option: string): void {
+    const syllables = (this.draft().reading ?? '').trim().split(/\s+/);
+    if (alternate.index >= syllables.length) {
+      return;
+    }
+    syllables[alternate.index] = option;
+    this.setPinyin(syllables.join(' '));
+  }
+
+  private async derivePinyin(term: string): Promise<void> {
+    if (this.pinyinMode() !== 'auto') {
+      return;
+    }
+
+    const seq = ++this.deriveSeq;
+    const trimmed = term.trim();
+    if (!trimmed) {
+      this.patch({ reading: '' });
+      this.alternates.set([]);
+      return;
+    }
+
+    const [reading, alternates] = await Promise.all([
+      this.pinyin.convert(trimmed),
+      this.pinyin.alternates(trimmed),
+    ]);
+
+    // The first derivation blocks on downloading the dictionary chunk, during
+    // which the user may have typed more characters or taken the field over by
+    // hand. Any of the three means this result is no longer wanted.
+    if (seq !== this.deriveSeq) {
+      return;
+    }
+    if (this.pinyinMode() !== 'auto') {
+      return;
+    }
+    if (this.draft().term.trim() !== trimmed) {
+      return;
+    }
+
+    this.patch({ reading });
+    this.alternates.set(alternates);
   }
 
   /** Comma-separated in the UI, an array in the model. */
-  setCollocations(value: string): void {
-    this.patchUsage({ collocations: splitList(value) });
-  }
-
   setTags(value: string): void {
     this.patch({ tags: splitList(value) });
   }
 
-  collocationsText(): string {
-    return this.draft().usage.collocations.join(', ');
-  }
-
   tagsText(): string {
     return this.draft().tags.join(', ');
-  }
-
-  addContrast(): void {
-    this.patchUsage({ contrasts: [...this.draft().usage.contrasts, { with: '', note: '' }] });
-  }
-
-  updateContrast(index: number, patch: { with?: string; note?: string }): void {
-    this.patchUsage({
-      contrasts: this.draft().usage.contrasts.map((contrast, i) =>
-        i === index ? { ...contrast, ...patch } : contrast,
-      ),
-    });
-  }
-
-  removeContrast(index: number): void {
-    this.patchUsage({
-      contrasts: this.draft().usage.contrasts.filter((_, i) => i !== index),
-    });
   }
 
   /** Tracks what's highlighted in the sentence box so it can become the term. */
@@ -169,11 +297,11 @@ export class CardEditorComponent implements OnInit {
    * Paste the sentence, highlight the word inside it, click once. No dictionary
    * and no segmenter involved, so it works in any language.
    */
-  useSelectionAsTerm(): void {
+  async useSelectionAsTerm(): Promise<void> {
     const selected = this.selection();
     if (selected) {
-      this.patch({ term: selected });
       this.selection.set('');
+      await this.setTerm(selected);
     }
   }
 
@@ -212,6 +340,9 @@ export class CardEditorComponent implements OnInit {
         this.draft.set(emptyDraft());
         this.showDetails.set(false);
         this.selection.set('');
+        this.pinyinMode.set('auto');
+        this.alternates.set([]);
+        this.closeExamples();
         this.flashSaved();
         queueMicrotask(() => this.termInput()?.nativeElement.focus());
       } else {
@@ -234,15 +365,10 @@ export class CardEditorComponent implements OnInit {
 
   private hasDetails(): boolean {
     const draft = this.draft();
-    return Boolean(
-      draft.reading ||
-      draft.meaning ||
-      draft.sentenceTranslation ||
-      draft.tags.length ||
-      draft.usage.register ||
-      draft.usage.collocations.length ||
-      draft.usage.contrasts.length,
-    );
+    // `reading` is deliberately absent: it is field 3 now, always visible, and
+    // auto-filled on nearly every card — including it would expand the details
+    // section for essentially every card and defeat the point of collapsing it.
+    return Boolean(draft.meaning || draft.sentenceTranslation || draft.tags.length);
   }
 }
 

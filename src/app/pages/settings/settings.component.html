@@ -69,3 +69,60 @@
     </span>
   </label>
 </section>
+
+<section class="card-surface panel">
+  <h2>Credits &amp; licences</h2>
+  <p class="panel-note">
+    DeckCard is free software under the
+    <a [href]="licenseUrl('GPL-3.0.txt')" target="_blank" rel="noopener">GNU GPL v3</a>, because it
+    bundles a GPL handwriting recogniser. Source:
+    <a href="https://github.com/dimfel/flashcard" target="_blank" rel="noopener">github.com/dimfel/flashcard</a>.
+  </p>
+
+  <ul class="credits">
+    <li>
+      <strong>Handwriting recognition</strong> —
+      <a href="https://github.com/gugray/HanziLookupJS" target="_blank" rel="noopener"
+        >HanziLookupJS</a
+      >
+      by Gabor Ugray, after Jordan Kiang (GPL-3.0).
+    </li>
+    <li>
+      <strong>Stroke database</strong> —
+      <a href="https://github.com/skishore/makemeahanzi" target="_blank" rel="noopener"
+        >Make Me a Hanzi</a
+      >
+      by Shaunak Kishore, from Arphic fonts
+      (<a [href]="licenseUrl('Arphic-Public-License.txt')" target="_blank" rel="noopener"
+        >Arphic Public License</a
+      >).
+    </li>
+    <li>
+      <strong>Example sentences</strong> —
+      <a href="https://tatoeba.org" target="_blank" rel="noopener">Tatoeba</a>
+      (<a href="https://creativecommons.org/licenses/by/2.0/fr/" target="_blank" rel="noopener"
+        >CC BY 2.0 FR</a
+      >)@if (corpusMeta(); as meta) {, retrieved {{ meta.retrievedAt }},
+      {{ meta.lines.toLocaleString() }} sentence pairs}.
+    </li>
+    <li>
+      <strong>Pinyin</strong> —
+      <a href="https://github.com/zh-lx/pinyin-pro" target="_blank" rel="noopener">pinyin-pro</a>
+      (MIT).
+    </li>
+    <li>
+      <strong>Scheduling</strong> —
+      <a
+        href="https://github.com/open-spaced-repetition/ts-fsrs"
+        target="_blank"
+        rel="noopener"
+        >ts-fsrs</a
+      >
+      (MIT).
+    </li>
+  </ul>
+
+  <p class="panel-note">
+    <a [href]="licenseUrl('NOTICES.txt')" target="_blank" rel="noopener">Full notices</a>
+  </p>
+</section>

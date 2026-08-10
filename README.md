@@ -1,20 +1,19 @@
-# Flashcards
+# DeckCard
 
-A vocabulary flashcard app built for pushing a language from intermediate toward
-expert — where the bottleneck stops being _"what does this word mean"_ and
-becomes _"when does using this word make me sound wrong."_
+A Chinese vocabulary flashcard app built for pushing the language from
+intermediate toward expert, with capture friction as the thing it fights hardest.
 
 Every card carries three authored fields:
 
-1. **Word** — the vocab item (顽固)
-2. **Sentence** — a real sentence you met it in
-3. **Usage note** — register, collocations, and near-synonym contrast
+1. **Word** — the vocab item (顽固). Type it, or **draw it** on the handwriting
+   pad if you have no Chinese IME to hand.
+2. **Sentence** — a real sentence you met it in. Type it, or pull one from a
+   bundled Tatoeba corpus.
+3. **Pinyin** — derived from the word automatically, and editable when the
+   derivation guesses a polyphone wrong.
 
-Field 3 is the one that does the intermediate→expert work. Reading, gloss, and
-translation are optional supporting metadata, not one of your three slots.
-
-Nothing in the data model is language-specific: it holds Chinese, Japanese,
-Spanish, or medical terminology equally well.
+Meaning, sentence translation, and tags are optional supporting metadata, not one
+of the three slots.
 
 ## Running it
 
@@ -28,7 +27,18 @@ npx ng build      # production build into dist/
 ## How it works
 
 - **Offline-first.** Everything lives in IndexedDB via Dexie. There is no server
-  and no account. Installable to a phone home screen as a PWA.
+  and no account, and the app makes no third-party network requests. Installable
+  to a phone home screen as a PWA.
+- **Handwriting input.** A canvas under field 1 turns strokes into candidate
+  characters, matched entirely on-device against a 827 kB stroke database. Both
+  the recogniser and its data are lazy: draw nothing and you download neither.
+- **Pinyin on tap.** `pinyin-pro` converts the whole term at once, so it resolves
+  polyphones from context — 银行 comes out `yín háng`, 行走 comes out `xíng zǒu`.
+  Type over the field to correct it; clear it to hand control back.
+- **Example sentences.** 38k filtered Chinese–English pairs from Tatoeba ship as
+  a 2.5 MB file, fetched the first time you press the button and cached after.
+  Coverage is good for common words and thin above roughly HSK 5 — Tatoeba skews
+  beginner, and plenty of advanced words simply aren't in it.
 - **FSRS scheduling** via [`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs),
   wrapped in `core/review/scheduler.ts` so the algorithm never leaks into
   components.
@@ -45,11 +55,16 @@ npx ng build      # production build into dist/
 ```
 src/app/core/
   models/card.types.ts     data model, the integration seam
-  db/                      Dexie schema, shared queries
+  db/                      Dexie schema, migrations, shared queries
   review/scheduler.ts      ts-fsrs wrapper, queue building, blankTerm
   state/                   signal-based stores (no RxJS)
   backup/                  JSON export/import
+  pinyin/                  lazily loaded pinyin derivation
+  corpus/                  example-sentence search + fetch
+  assets/asset-url.ts      base-href-safe asset URLs
+src/app/shared/handwriting/  canvas pad, recogniser, vendored HanziLookupJS
 src/app/pages/             one folder per route
+scripts/build-corpus.mjs   regenerates public/corpus/cmn-eng.tsv
 ```
 
 ## Conventions
@@ -57,7 +72,38 @@ src/app/pages/             one folder per route
 Standalone components, `OnPush` everywhere, signals for all state — no RxJS and
 no `liveQuery`, so there is exactly one reactivity model to reason about.
 
+Anything heavy is behind a dynamic `import()` or lives in `public/` and is
+fetched on demand, so the initial bundle stays around 250 kB. Assets are
+addressed through `assetUrl()`, never a root-absolute path, because the app
+deploys under `/flashcard/`.
+
 ## Keyboard
 
 In review: `Space` reveal · `1`–`4` grade · `E` edit · `Z` undo.
 In the editor: `Ctrl`/`Cmd`+`Enter` saves and opens the next blank card.
+
+## Regenerating the example corpus
+
+Roughly a once-a-year job. Download the three Tatoeba per-language exports,
+decompress them (they are bz2; `bunzip2`, or Python's `bz2` module), then:
+
+```bash
+node scripts/build-corpus.mjs \
+  --cmn cmn_sentences.tsv --eng eng_sentences.tsv --links cmn-eng_links.tsv
+```
+
+The output under `public/corpus/` is committed on purpose, so the deploy never
+depends on a third-party download. Filters and their rationale are documented at
+the top of the script.
+
+## Licence
+
+**GNU GPL v3** — see [`LICENSE`](LICENSE). The app bundles
+[HanziLookupJS](https://github.com/gugray/HanziLookupJS), which is GPL-3.0, so
+the combined work is too.
+
+Third-party components and their licences are listed in
+[`public/licenses/NOTICES.txt`](public/licenses/NOTICES.txt) and credited in the
+app's Settings screen: HanziLookupJS (GPL-3.0), Make Me a Hanzi stroke data
+(Arphic Public License), Tatoeba sentences (CC BY 2.0 FR), pinyin-pro (MIT),
+ts-fsrs (MIT), Dexie (Apache-2.0).

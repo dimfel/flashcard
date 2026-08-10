@@ -1,4 +1,4 @@
-@if (deck(); as currentDeck) {
+﻿@if (deck(); as currentDeck) {
   <div class="page-head">
     <div>
       <h1>{{ currentDeck.name }}</h1>
@@ -49,7 +49,7 @@
             (click)="toggle(card.id)"
             [attr.aria-expanded]="expanded() === card.id"
           >
-            <span class="term term-text" [lang]="currentDeck.language">{{ card.term }}</span>
+            <span class="term term-text" lang="zh-Hans">{{ card.term }}</span>
             <span class="summary-meta">
               @if (card.reading) {
                 <span class="reading">{{ card.reading }}</span>
@@ -57,44 +57,14 @@
               @if (card.meaning) {
                 <span class="meaning">{{ card.meaning }}</span>
               }
-              @if (card.usage.register) {
-                <span class="chip chip-accent">{{ card.usage.register }}</span>
-              }
             </span>
           </button>
 
           @if (expanded() === card.id) {
             <div class="card-detail">
-              <p class="sentence term-text" [lang]="currentDeck.language">{{ card.sentence }}</p>
+              <p class="sentence term-text" lang="zh-Hans">{{ card.sentence }}</p>
               @if (card.sentenceTranslation) {
                 <p class="translation">{{ card.sentenceTranslation }}</p>
-              }
-
-              @if (card.usage.note) {
-                <p class="usage-note">{{ card.usage.note }}</p>
-              }
-
-              @if (card.usage.collocations.length) {
-                <p class="chip-row">
-                  @for (collocation of card.usage.collocations; track collocation) {
-                    <span class="chip term-text" [lang]="currentDeck.language">{{
-                      collocation
-                    }}</span>
-                  }
-                </p>
-              }
-
-              @if (card.usage.contrasts.length) {
-                <ul class="contrast-list">
-                  @for (contrast of card.usage.contrasts; track $index) {
-                    <li>
-                      <span class="term-text" [lang]="currentDeck.language">{{
-                        contrast.with
-                      }}</span>
-                      — {{ contrast.note }}
-                    </li>
-                  }
-                </ul>
               }
 
               @if (card.tags.length) {

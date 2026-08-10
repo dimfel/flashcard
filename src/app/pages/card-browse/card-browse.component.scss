@@ -90,26 +90,11 @@
   font-size: 0.9rem;
 }
 
-.usage-note {
-  margin: 0 0 0.75rem;
-  padding: 0.6rem 0.8rem;
-  background: var(--surface-2);
-  border-radius: var(--radius);
-  border-left: 3px solid var(--accent);
-}
-
 .chip-row {
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
   margin: 0 0 0.6rem;
-}
-
-.contrast-list {
-  margin: 0 0 0.75rem;
-  padding-left: 1.1rem;
-  font-size: 0.925rem;
-  color: var(--text-dim);
 }
 
 .card-actions {

@@ -26,23 +26,6 @@
       />
     </label>
 
-    <label class="field">
-      <span class="field-label">Language</span>
-      <input
-        class="input"
-        name="language"
-        list="language-presets"
-        [ngModel]="newLanguage()"
-        (ngModelChange)="newLanguage.set($event)"
-      />
-      <datalist id="language-presets">
-        @for (language of languages; track language.code) {
-          <option [value]="language.code">{{ language.label }}</option>
-        }
-      </datalist>
-      <span class="field-hint">Sets the text language and font. Any tag works.</span>
-    </label>
-
     <label class="checkbox-row">
       <input
         type="checkbox"
@@ -83,7 +66,6 @@
         <div class="deck-main">
           <a class="deck-name" [routerLink]="['/decks', entry.deck.id]">{{ entry.deck.name }}</a>
           <p class="deck-meta">
-            <span class="chip">{{ entry.deck.language }}</span>
             <span>{{ entry.cardCount }} {{ entry.cardCount === 1 ? 'card' : 'cards' }}</span>
             @if (entry.deck.productionEnabled) {
               <span class="chip">2 directions</span>

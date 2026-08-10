@@ -1,4 +1,4 @@
-@if (notFound()) {
+﻿@if (notFound()) {
   <div class="empty-state">
     <p>That card or deck no longer exists.</p>
     <button type="button" class="btn" (click)="cancel()">Back to decks</button>
@@ -17,20 +17,41 @@
   </div>
 
   <form class="card-surface editor" (ngSubmit)="save(false)" (keydown)="onFormKeydown($event)">
-    <label class="field">
-      <span class="field-label">1 · Word</span>
+    <!-- A div, not a wrapping label: a click anywhere inside a label refocuses
+         its control, which would yank focus off the canvas on every stroke. -->
+    <div class="field">
+      <div class="field-head">
+        <label class="field-label" for="term">1 · Word</label>
+        <button
+          type="button"
+          class="btn btn-sm draw-toggle"
+          (click)="togglePad()"
+          [attr.aria-expanded]="showPad()"
+          aria-controls="handwriting-pad"
+        >
+          {{ showPad() ? '× Close' : '✍ Draw' }}
+        </button>
+      </div>
       <input
         #termInput
+        id="term"
         class="input term-input term-text"
         name="term"
-        [lang]="deck()?.language"
+        lang="zh-Hans"
         [ngModel]="draft().term"
-        (ngModelChange)="patch({ term: $event })"
+        (ngModelChange)="setTerm($event)"
         placeholder="顽固"
         autocomplete="off"
         autofocus
       />
-    </label>
+
+      @if (showPad()) {
+        <app-handwriting-pad
+          id="handwriting-pad"
+          (characterPicked)="appendDrawnCharacter($event)"
+        />
+      }
+    </div>
 
     <div class="field">
       <span class="field-label">2 · Sentence you met it in</span>
@@ -38,7 +59,7 @@
         #sentenceInput
         class="textarea term-text"
         name="sentence"
-        [lang]="deck()?.language"
+        lang="zh-Hans"
         [ngModel]="draft().sentence"
         (ngModelChange)="patch({ sentence: $event })"
         (select)="captureSelection()"
@@ -47,12 +68,60 @@
         placeholder="他顽固地拒绝了所有建议。"
       ></textarea>
 
-      @if (selection()) {
-        <button type="button" class="btn btn-sm use-selection" (click)="useSelectionAsTerm()">
-          Use “<span class="term-text">{{ selection() }}</span
-          >” as the word
+      <div class="sentence-actions">
+        @if (selection()) {
+          <button type="button" class="btn btn-sm" (click)="useSelectionAsTerm()">
+            Use “<span class="term-text">{{ selection() }}</span
+            >” as the word
+          </button>
+        }
+        <button
+          type="button"
+          class="btn btn-sm"
+          (click)="findExamples()"
+          [disabled]="!draft().term.trim() || corpusStatus() === 'loading'"
+        >
+          @if (corpusStatus() === 'idle') {
+            Find example sentences (downloads {{ corpusDownloadLabel }} once)
+          } @else if (corpusStatus() === 'loading') {
+            Downloading examples…
+          } @else {
+            Find example sentences
+          }
         </button>
-      } @else {
+      </div>
+
+      @if (showExamples()) {
+        <div class="examples">
+          @if (corpusStatus() === 'error') {
+            <p class="field-hint">Examples unavailable offline — connect once to download them.</p>
+          } @else if (corpusStatus() === 'loading') {
+            <p class="field-hint">Downloading…</p>
+          } @else if (exampleResults().length === 0) {
+            <p class="field-hint">
+              No sentence in the corpus contains “<span class="term-text" lang="zh-Hans">{{
+                draft().term.trim()
+              }}</span
+              >”. Type one from where you met it instead.
+            </p>
+          } @else {
+            <ul class="example-list">
+              @for (example of exampleResults(); track example.chinese) {
+                <li>
+                  <button type="button" class="example" (click)="pickExample(example)">
+                    <span class="term-text" lang="zh-Hans">{{ example.chinese }}</span>
+                    <span class="translation">{{ example.english }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+          <p class="example-credit">
+            Examples from Tatoeba · CC BY 2.0 FR
+            <button type="button" class="btn btn-sm" (click)="closeExamples()">Close</button>
+          </p>
+        </div>
+      } @else if (!selection()) {
         <span class="field-hint">
           Tip: paste the sentence first, then highlight the word inside it.
         </span>
@@ -60,26 +129,64 @@
 
       @if (termMissingFromSentence()) {
         <p class="banner inline-warn" role="status">
-          The word doesn’t appear literally in the sentence. That’s fine for inflected forms — but
-          the production prompt won’t be able to blank it out.
+          The word doesn’t appear in the sentence, so the production prompt can’t blank it out.
+          Usually this means a typo, or the sentence uses a different word.
         </p>
       }
     </div>
 
-    <label class="field">
-      <span class="field-label">3 · Usage note</span>
-      <textarea
-        class="textarea"
-        name="usage"
-        [ngModel]="draft().usage.note"
-        (ngModelChange)="patchUsage({ note: $event })"
-        placeholder="Formal and almost always pejorative. Compare 固执, which can be neutral."
-      ></textarea>
-      <span class="field-hint">
-        When does this word make you sound wrong? Register, what it must appear with, which
-        near-synonym you keep reaching for instead.
-      </span>
-    </label>
+    <div class="field">
+      <div class="field-head">
+        <label class="field-label" for="pinyin">3 · Pinyin</label>
+        @if (pinyinMode() === 'manual') {
+          <button
+            type="button"
+            class="btn btn-sm rederive"
+            (click)="rederivePinyin()"
+            [disabled]="!draft().term.trim()"
+            title="Derive again from the word"
+          >
+            ↻ Re-derive
+          </button>
+        }
+      </div>
+      <input
+        id="pinyin"
+        class="input pinyin-input"
+        name="reading"
+        lang="zh-Latn-pinyin"
+        [ngModel]="draft().reading"
+        (ngModelChange)="setPinyin($event)"
+        placeholder="wán gù"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      @if (alternates().length) {
+        <div class="alternates">
+          @for (alternate of alternates(); track alternate.index) {
+            <span class="alternate-row">
+              <span class="term-text" lang="zh-Hans">{{ alternate.char }}</span>
+              @for (option of alternate.options; track option) {
+                <button
+                  type="button"
+                  class="chip chip-button"
+                  (click)="chooseAlternate(alternate, option)"
+                >
+                  {{ option }}
+                </button>
+              }
+            </span>
+          }
+        </div>
+        <span class="field-hint">
+          More than one reading — tap the one this word uses.
+        </span>
+      } @else {
+        <span class="field-hint">
+          Filled in from the word. Type over it to correct it; clear it to go back to automatic.
+        </span>
+      }
+    </div>
 
     <button
       type="button"
@@ -93,29 +200,16 @@
 
     @if (showDetails()) {
       <div id="card-details" class="details">
-        <div class="two-up">
-          <label class="field">
-            <span class="field-label">Reading</span>
-            <input
-              class="input"
-              name="reading"
-              [ngModel]="draft().reading"
-              (ngModelChange)="patch({ reading: $event })"
-              placeholder="wángù"
-            />
-          </label>
-
-          <label class="field">
-            <span class="field-label">Meaning</span>
-            <input
-              class="input"
-              name="meaning"
-              [ngModel]="draft().meaning"
-              (ngModelChange)="patch({ meaning: $event })"
-              placeholder="stubborn, obstinate"
-            />
-          </label>
-        </div>
+        <label class="field">
+          <span class="field-label">Meaning</span>
+          <input
+            class="input"
+            name="meaning"
+            [ngModel]="draft().meaning"
+            (ngModelChange)="patch({ meaning: $event })"
+            placeholder="stubborn, obstinate"
+          />
+        </label>
 
         <label class="field">
           <span class="field-label">Sentence translation</span>
@@ -128,80 +222,16 @@
           />
         </label>
 
-        <div class="two-up">
-          <label class="field">
-            <span class="field-label">Register</span>
-            <select
-              class="select"
-              name="register"
-              [ngModel]="draft().usage.register ?? ''"
-              (ngModelChange)="setRegister($event)"
-            >
-              <option value="">— not set —</option>
-              @for (register of registers; track register) {
-                <option [value]="register">{{ register }}</option>
-              }
-            </select>
-          </label>
-
-          <label class="field">
-            <span class="field-label">Tags</span>
-            <input
-              class="input"
-              name="tags"
-              [ngModel]="tagsText()"
-              (ngModelChange)="setTags($event)"
-              placeholder="hsk6, reading"
-            />
-          </label>
-        </div>
-
         <label class="field">
-          <span class="field-label">Collocations</span>
+          <span class="field-label">Tags</span>
           <input
-            class="input term-text"
-            name="collocations"
-            [lang]="deck()?.language"
-            [ngModel]="collocationsText()"
-            (ngModelChange)="setCollocations($event)"
-            placeholder="顽固不化, 顽固分子"
+            class="input"
+            name="tags"
+            [ngModel]="tagsText()"
+            (ngModelChange)="setTags($event)"
+            placeholder="hsk6, reading"
           />
-          <span class="field-hint">Comma separated. Words this one must travel with.</span>
         </label>
-
-        <div class="field">
-          <span class="field-label">Easily confused with</span>
-          @for (contrast of draft().usage.contrasts; track $index) {
-            <div class="contrast-row">
-              <input
-                class="input term-text contrast-with"
-                [lang]="deck()?.language"
-                [ngModel]="contrast.with"
-                [ngModelOptions]="{ standalone: true }"
-                (ngModelChange)="updateContrast($index, { with: $event })"
-                placeholder="固执"
-              />
-              <input
-                class="input"
-                [ngModel]="contrast.note"
-                [ngModelOptions]="{ standalone: true }"
-                (ngModelChange)="updateContrast($index, { note: $event })"
-                placeholder="固执 can be neutral; 顽固 is not."
-              />
-              <button
-                type="button"
-                class="btn btn-sm"
-                (click)="removeContrast($index)"
-                aria-label="Remove this contrast"
-              >
-                ×
-              </button>
-            </div>
-          }
-          <button type="button" class="btn btn-sm" (click)="addContrast()">
-            + Add a confusable
-          </button>
-        </div>
       </div>
     }
 

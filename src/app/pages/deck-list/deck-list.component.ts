@@ -4,18 +4,6 @@ import { RouterLink } from '@angular/router';
 import { DeckStore, type DeckWithQueue } from '../../core/state/deck.store';
 import { SettingsStore } from '../../core/state/settings.store';
 
-/** Offered as a starting point; the field stays free text for anything else. */
-const LANGUAGE_PRESETS = [
-  { code: 'zh-Hans', label: 'Chinese (Simplified)' },
-  { code: 'zh-Hant', label: 'Chinese (Traditional)' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'fr', label: 'French' },
-  { code: 'de', label: 'German' },
-  { code: 'en', label: 'English' },
-];
-
 @Component({
   selector: 'app-deck-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,13 +15,11 @@ export class DeckListComponent implements OnInit {
   private readonly deckStore = inject(DeckStore);
   private readonly settingsStore = inject(SettingsStore);
 
-  readonly languages = LANGUAGE_PRESETS;
   readonly decks = this.deckStore.decks;
   readonly loading = this.deckStore.loading;
 
   readonly creating = signal(false);
   readonly newName = signal('');
-  readonly newLanguage = signal('zh-Hans');
   readonly newProduction = signal(true);
   readonly confirmingDelete = signal<string | null>(null);
 
@@ -61,7 +47,8 @@ export class DeckListComponent implements OnInit {
     if (!name) {
       return;
     }
-    await this.deckStore.create(name, this.newLanguage(), this.newProduction());
+    // Chinese-only app: `DeckStore.create` defaults the tag to 'zh-Hans'.
+    await this.deckStore.create(name, '', this.newProduction());
     this.creating.set(false);
   }
 

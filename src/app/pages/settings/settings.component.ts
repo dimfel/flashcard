@@ -4,6 +4,13 @@ import { BackupParseError } from '../../core/backup/backup';
 import { BackupService, type ImportResult } from '../../core/backup/backup.service';
 import { SettingsStore } from '../../core/state/settings.store';
 import { DeckStore } from '../../core/state/deck.store';
+import { assetUrl } from '../../core/assets/asset-url';
+
+/** What `public/corpus/cmn-eng.meta.json` holds, for the credits line. */
+interface CorpusMeta {
+  retrievedAt: string;
+  lines: number;
+}
 
 @Component({
   selector: 'app-settings',
@@ -21,9 +28,31 @@ export class SettingsComponent implements OnInit {
   readonly importResult = signal<ImportResult | null>(null);
   readonly importError = signal('');
   readonly busy = signal(false);
+  readonly corpusMeta = signal<CorpusMeta | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.settingsStore.load();
+    await this.loadCorpusMeta();
+  }
+
+  /** Resolves against the base href, so it survives the `/flashcard/` deploy. */
+  licenseUrl(file: string): string {
+    return assetUrl(`licenses/${file}`);
+  }
+
+  /**
+   * The corpus vintage, shown as part of the Tatoeba attribution. A few hundred
+   * bytes, and failing to get it just drops the detail — never the credit.
+   */
+  private async loadCorpusMeta(): Promise<void> {
+    try {
+      const response = await fetch(assetUrl('corpus/cmn-eng.meta.json'));
+      if (response.ok) {
+        this.corpusMeta.set((await response.json()) as CorpusMeta);
+      }
+    } catch {
+      this.corpusMeta.set(null);
+    }
   }
 
   async setNewCardsPerDay(value: string): Promise<void> {
