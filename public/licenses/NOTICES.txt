@@ -42,6 +42,20 @@ sentence pairs, built by scripts/build-corpus.mjs. Retrieval date and line
 count are recorded in public/corpus/cmn-eng.meta.json
 
 
+CC-CEDICT — word definitions (public/dictionary/cedict.tsv)
+-------------------------------------------------------------
+Copyright (c) 1997, 1998 Paul Andrew Denisowski, and CC-CEDICT contributors.
+https://cc-cedict.org
+Licence: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+https://creativecommons.org/licenses/by-sa/4.0/
+
+The shipped file merges every CC-CEDICT sense per simplified headword into one
+flashcard-sized definition, built by scripts/build-dictionary.mjs. Because the
+licence is ShareAlike, this derived file carries the same CC BY-SA 4.0 terms as
+the source. Retrieval date and term count are recorded in
+public/dictionary/cedict.meta.json
+
+
 pinyin-pro — pinyin conversion
 ------------------------------
 Copyright (c) zh-lx.

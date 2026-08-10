@@ -8,6 +8,7 @@ import type { FlashcardDb } from '../../core/db/flashcard-db';
 import { PinyinService, type PinyinAlternate } from '../../core/pinyin/pinyin.service';
 import { ExampleSentenceService } from '../../core/corpus/example-sentence.service';
 import type { ExampleSentence } from '../../core/corpus/corpus';
+import { DefinitionService } from '../../core/dictionary/definition.service';
 import { CardEditorComponent } from './card-editor.component';
 
 function deferred(): { promise: Promise<void>; release: () => void } {
@@ -74,12 +75,38 @@ class FakeExampleService {
   }
 }
 
+/** Stands in for the 5.9 MB CC-CEDICT dictionary; the real lookup is covered in dictionary.spec. */
+class FakeDefinitionService {
+  readonly status = signal<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  loadCount = 0;
+  /** While set, `load` blocks — stands in for the multi-megabyte download. */
+  gate?: { promise: Promise<void>; release: () => void };
+
+  private readonly definitions: Record<string, string> = {
+    顽固: 'stubborn; obstinate',
+    发生: 'to happen; to occur',
+  };
+
+  async load(): Promise<void> {
+    this.loadCount++;
+    if (this.gate) {
+      await this.gate.promise;
+    }
+    this.status.set('ready');
+  }
+
+  lookup(term: string): string | null {
+    return this.definitions[term] ?? null;
+  }
+}
+
 describe('CardEditorComponent', () => {
   let db: FlashcardDb;
   let fixture: ComponentFixture<CardEditorComponent>;
   let component: CardEditorComponent;
   let pinyin: FakePinyinService;
   let examples: FakeExampleService;
+  let definitions: FakeDefinitionService;
   let params: Record<string, string>;
 
   const deck = makeDeck();
@@ -100,6 +127,7 @@ describe('CardEditorComponent', () => {
     await db.decks.put(deck);
     pinyin = new FakePinyinService();
     examples = new FakeExampleService();
+    definitions = new FakeDefinitionService();
     params = { deckId: deck.id };
 
     TestBed.configureTestingModule({
@@ -109,6 +137,7 @@ describe('CardEditorComponent', () => {
         provideRouter([]),
         { provide: PinyinService, useValue: pinyin },
         { provide: ExampleSentenceService, useValue: examples },
+        { provide: DefinitionService, useValue: definitions },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -486,6 +515,130 @@ describe('CardEditorComponent', () => {
 
     it('starts the corpus download when the editor opens, not on the first keystroke', () => {
       expect(examples.loadCount).toBeGreaterThan(0);
+    });
+  });
+
+  describe('definitions (field 4)', () => {
+    it('fills the definition as soon as a word is entered', async () => {
+      await component.setTerm('顽固');
+
+      expect(component.draft().meaning).toBe('stubborn; obstinate');
+      expect(component.meaningMode()).toBe('auto');
+    });
+
+    it('says so when the dictionary has nothing, rather than looking broken', async () => {
+      await component.setTerm('银行');
+
+      expect(component.noDefinition()).toBe(true);
+      expect(component.draft().meaning).toBe('');
+    });
+
+    it('does not leave the previous word’s definition behind', async () => {
+      await component.setTerm('顽固');
+      expect(component.draft().meaning).toBe('stubborn; obstinate');
+
+      await component.setTerm('发生');
+
+      expect(component.draft().meaning).toBe('to happen; to occur');
+
+      await component.setTerm('银行');
+
+      expect(component.draft().meaning).toBe('');
+    });
+
+    it('keeps a hand-written definition when the word changes afterwards', async () => {
+      await component.setTerm('顽固');
+      component.setMeaning('my own gloss');
+
+      await component.setTerm('发生');
+
+      expect(component.meaningMode()).toBe('manual');
+      expect(component.draft().meaning).toBe('my own gloss');
+    });
+
+    it('re-arms automatic filling when the definition box is emptied', async () => {
+      await component.setTerm('顽固');
+      component.setMeaning('wrong');
+      expect(component.meaningMode()).toBe('manual');
+
+      component.setMeaning('');
+
+      expect(component.meaningMode()).toBe('auto');
+
+      await component.setTerm('发生');
+      expect(component.draft().meaning).toBe('to happen; to occur');
+    });
+
+    it('re-derives on demand, discarding a hand-written definition', async () => {
+      await component.setTerm('顽固');
+      component.setMeaning('wrong');
+
+      await component.rederiveDefinition();
+
+      expect(component.draft().meaning).toBe('stubborn; obstinate');
+      expect(component.meaningMode()).toBe('auto');
+    });
+
+    it('clears the definition when the word is cleared', async () => {
+      await component.setTerm('顽固');
+
+      await component.setTerm('');
+
+      expect(component.draft().meaning).toBe('');
+      expect(component.noDefinition()).toBe(false);
+    });
+
+    it('discards a slow lookup whose word has already moved on', async () => {
+      const gate = deferred();
+      definitions.gate = gate;
+
+      const stale = component.setTerm('银行');
+      definitions.gate = undefined;
+
+      await component.setTerm('顽固');
+      gate.release();
+      await stale;
+
+      expect(component.draft().meaning).toBe('stubborn; obstinate');
+    });
+
+    it('resets to automatic for the next card after save-and-add-another', async () => {
+      await component.setTerm('顽固');
+      component.setMeaning('manual gloss');
+      component.patch({ sentence: '他很顽固。' });
+
+      await component.save(true);
+
+      expect(component.meaningMode()).toBe('auto');
+      expect(component.noDefinition()).toBe(false);
+    });
+
+    it('does not re-derive over a definition already saved on a card', async () => {
+      const card = makeCard({ deckId: deck.id, term: '顽固', meaning: 'hand written' });
+      await db.cards.put(card);
+      params = { cardId: card.id };
+      definitions.loadCount = 0;
+
+      await mount();
+
+      expect(component.meaningMode()).toBe('manual');
+      expect(component.draft().meaning).toBe('hand written');
+      expect(definitions.loadCount).toBe(0);
+    });
+
+    it('backfills the definition on a card that was saved without one', async () => {
+      const card = makeCard({ deckId: deck.id, term: '顽固', meaning: undefined });
+      await db.cards.put(card);
+      params = { cardId: card.id };
+
+      await mount();
+
+      expect(component.meaningMode()).toBe('auto');
+      expect(component.draft().meaning).toBe('stubborn; obstinate');
+    });
+
+    it('starts the dictionary download when the editor opens, not on the first keystroke', () => {
+      expect(definitions.loadCount).toBeGreaterThan(0);
     });
   });
 });

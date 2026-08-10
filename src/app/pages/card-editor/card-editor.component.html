@@ -187,6 +187,53 @@
       }
     </div>
 
+    <div class="field">
+      <div class="field-head">
+        <label class="field-label" for="meaning">4 · Definition</label>
+        @if (meaningMode() === 'manual') {
+          <button
+            type="button"
+            class="btn btn-sm rederive"
+            (click)="rederiveDefinition()"
+            [disabled]="!draft().term.trim()"
+            title="Look up again from the word"
+          >
+            ↻ Re-derive
+          </button>
+        }
+      </div>
+      <input
+        id="meaning"
+        class="input"
+        name="meaning"
+        [ngModel]="draft().meaning"
+        (ngModelChange)="setMeaning($event)"
+        placeholder="sudden; abrupt; unexpected"
+        autocomplete="off"
+      />
+      @if (meaningMode() === 'auto') {
+        @if (dictionaryStatus() === 'loading' && draft().term.trim()) {
+          <span class="field-hint">Looking up the definition…</span>
+        } @else if (dictionaryStatus() === 'error') {
+          <span class="field-hint">
+            Dictionary unavailable offline — connect once to download it, or type the definition
+            yourself.
+          </span>
+        } @else if (noDefinition()) {
+          <span class="field-hint">
+            No dictionary entry for “<span class="term-text" lang="zh-Hans">{{
+              draft().term.trim()
+            }}</span
+            >”. Type what it means.
+          </span>
+        } @else if (draft().meaning) {
+          <span class="field-hint">Filled in from CC-CEDICT. Type over it to correct it.</span>
+        } @else {
+          <span class="field-hint">Fills itself in once there's a word above.</span>
+        }
+      }
+    </div>
+
     <button
       type="button"
       class="details-toggle"
@@ -199,17 +246,6 @@
 
     @if (showDetails()) {
       <div id="card-details" class="details">
-        <label class="field">
-          <span class="field-label">Meaning</span>
-          <input
-            class="input"
-            name="meaning"
-            [ngModel]="draft().meaning"
-            (ngModelChange)="patch({ meaning: $event })"
-            placeholder="sudden, suddenly"
-          />
-        </label>
-
         <label class="field">
           <span class="field-label">Sentence translation</span>
           <input

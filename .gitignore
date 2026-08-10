@@ -42,3 +42,9 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Auto-backup output, if the folder picker ever gets pointed at the repo root
+# (see "Where to point automatic backup" in README.md — it shouldn't be, but
+# better ignored than accidentally committed as user data).
+/flashcards-latest.json
+/flashcards-????-??-??.json

@@ -30,7 +30,7 @@
       "updateMode": "prefetch",
       "cacheQueryOptions": { "ignoreVary": true },
       "resources": {
-        "files": ["/hanzi/**", "/corpus/**", "/licenses/**"]
+        "files": ["/hanzi/**", "/corpus/**", "/dictionary/**", "/licenses/**"]
       }
     }
   ]

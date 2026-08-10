@@ -20,6 +20,7 @@ import {
   ExampleSentenceService,
 } from '../../core/corpus/example-sentence.service';
 import type { ExampleSentence } from '../../core/corpus/corpus';
+import { DefinitionService } from '../../core/dictionary/definition.service';
 import { type Card, type Deck } from '../../core/models/card.types';
 
 /**
@@ -45,6 +46,7 @@ export class CardEditorComponent implements OnInit {
   private readonly pinyin = inject(PinyinService);
   private readonly pendingTasks = inject(PendingTasks);
   private readonly examples = inject(ExampleSentenceService);
+  private readonly definitions = inject(DefinitionService);
 
   private readonly termInput = viewChild<ElementRef<HTMLInputElement>>('termInput');
   private readonly sentenceInput = viewChild<ElementRef<HTMLTextAreaElement>>('sentenceInput');
@@ -106,6 +108,21 @@ export class CardEditorComponent implements OnInit {
     this.exampleResults().filter((example) => example.chinese !== this.draft().sentence),
   );
 
+  readonly dictionaryStatus = this.definitions.status;
+
+  /**
+   * Whether field 4 still tracks the term.
+   *
+   * Same contract as `pinyinMode` and `sentenceMode`: typing your own
+   * definition takes it over, emptying the box hands it back.
+   */
+  readonly meaningMode = signal<'auto' | 'manual'>('auto');
+
+  /** The dictionary has been checked for this term and had nothing. */
+  readonly noDefinition = signal(false);
+
+  private meaningSeq = 0;
+
   readonly isEdit = computed(() => this.editing() !== null);
   readonly canSave = computed(
     () => this.draft().term.trim().length > 0 && this.draft().sentence.trim().length > 0,
@@ -135,12 +152,14 @@ export class CardEditorComponent implements OnInit {
     const deckId = this.route.snapshot.paramMap.get('deckId');
 
     if (!cardId) {
-      // Start the corpus download now rather than on the first keystroke, so
-      // the sentence is usually there the instant the word is. Not awaited —
-      // the editor must be usable while it arrives. Only when adding: editing
-      // an existing card keeps its own sentence and never needs the corpus,
-      // and `fillExample` fetches on demand if the box is later emptied.
+      // Start the corpus and dictionary downloads now rather than on the first
+      // keystroke, so field 2 and field 4 are usually filled the instant the
+      // word is. Not awaited — the editor must be usable while they arrive.
+      // Only when adding: editing an existing card keeps its own sentence and
+      // meaning, and each `fill*` method fetches on demand if a box is later
+      // emptied.
       void this.examples.load();
+      void this.definitions.load();
     }
 
     if (cardId) {
@@ -162,12 +181,15 @@ export class CardEditorComponent implements OnInit {
       // re-deriving here would silently overwrite a correction the moment the
       // card was reopened. A card saved without pinyin gets it backfilled.
       this.pinyinMode.set(card.reading?.trim() ? 'manual' : 'auto');
+      // Same contract for the definition — only backfilled if the card never
+      // had one, e.g. a card saved before this feature existed.
+      this.meaningMode.set(card.meaning?.trim() ? 'manual' : 'auto');
       // A saved card's sentence is always deliberate — it is required to save —
       // so editing one never swaps it for a corpus example.
       this.sentenceMode.set('manual');
       this.showDetails.set(this.hasDetails());
       this.deck.set((await this.deckStore.get(card.deckId)) ?? null);
-      await this.derivePinyin(card.term);
+      await Promise.all([this.derivePinyin(card.term), this.fillDefinition(card.term)]);
       return;
     }
 
@@ -273,6 +295,54 @@ export class CardEditorComponent implements OnInit {
     this.showExamples.set(false);
   }
 
+  setMeaning(value: string): void {
+    this.patch({ meaning: value });
+    this.meaningMode.set(value.trim() ? 'manual' : 'auto');
+  }
+
+  /** Throws away a hand-written definition and looks the word up again. */
+  async rederiveDefinition(): Promise<void> {
+    this.meaningMode.set('auto');
+    await this.fillDefinition(this.draft().term);
+  }
+
+  /**
+   * Fills field 4 from CC-CEDICT as soon as there is a word to look up.
+   *
+   * Same shape as `fillExample`: a lazily fetched, once-per-session asset,
+   * with a three-way staleness guard because the first lookup blocks on
+   * downloading it.
+   */
+  private async fillDefinition(term: string): Promise<void> {
+    if (this.meaningMode() !== 'auto') {
+      return;
+    }
+
+    const seq = ++this.meaningSeq;
+    const trimmed = term.trim();
+    if (!trimmed) {
+      this.patch({ meaning: '' });
+      this.noDefinition.set(false);
+      return;
+    }
+
+    await this.definitions.load();
+
+    if (seq !== this.meaningSeq) {
+      return;
+    }
+    if (this.meaningMode() !== 'auto') {
+      return;
+    }
+    if (this.draft().term.trim() !== trimmed) {
+      return;
+    }
+
+    const definition = this.definitions.lookup(trimmed);
+    this.patch({ meaning: definition ?? '' });
+    this.noDefinition.set(definition === null);
+  }
+
   /**
    * Appends rather than replaces: a word like 顽固 is drawn one character at a
    * time, and each pick should extend the word rather than restart it.
@@ -288,9 +358,14 @@ export class CardEditorComponent implements OnInit {
    */
   async setTerm(value: string): Promise<void> {
     this.patch({ term: value });
-    // Run together: the pinyin dictionary and the corpus are independent
-    // downloads, and serialising them would double the wait on a cold start.
-    await Promise.all([this.derivePinyin(value), this.fillExample(value)]);
+    // Run together: pinyin, the example corpus and the definition dictionary
+    // are three independent downloads, and serialising them would triple the
+    // wait on a cold start.
+    await Promise.all([
+      this.derivePinyin(value),
+      this.fillExample(value),
+      this.fillDefinition(value),
+    ]);
   }
 
   setPinyin(value: string): void {
@@ -423,6 +498,8 @@ export class CardEditorComponent implements OnInit {
         this.exampleResults.set([]);
         this.noExample.set(false);
         this.showExamples.set(false);
+        this.meaningMode.set('auto');
+        this.noDefinition.set(false);
         this.flashSaved();
         queueMicrotask(() => this.termInput()?.nativeElement.focus());
       } else {
@@ -445,10 +522,11 @@ export class CardEditorComponent implements OnInit {
 
   private hasDetails(): boolean {
     const draft = this.draft();
-    // `reading` is deliberately absent: it is field 3 now, always visible, and
-    // auto-filled on nearly every card — including it would expand the details
-    // section for essentially every card and defeat the point of collapsing it.
-    return Boolean(draft.meaning || draft.sentenceTranslation || draft.tags.length);
+    // `reading` and `meaning` are deliberately absent: they're fields 3 and 4
+    // now, always visible and auto-filled on nearly every card — including
+    // them would expand the details section for essentially every card and
+    // defeat the point of collapsing it.
+    return Boolean(draft.sentenceTranslation || draft.tags.length);
   }
 }
 

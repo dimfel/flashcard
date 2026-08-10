@@ -3,7 +3,7 @@
 A Chinese vocabulary flashcard app built for pushing the language from
 intermediate toward expert, with capture friction as the thing it fights hardest.
 
-Every card carries three authored fields:
+Every card carries four authored fields, and three of them fill themselves in:
 
 1. **Word** — the vocab item (顽固). Type it, or **draw it** on the handwriting
    pad if you have no Chinese IME to hand.
@@ -12,9 +12,11 @@ Every card carries three authored fields:
    it stays put.
 3. **Pinyin** — derived from the word automatically, and editable when the
    derivation guesses a polyphone wrong.
+4. **Definition** — looked up in a bundled CC-CEDICT the moment there's a word
+   above. Type over it to correct or replace it.
 
-Meaning, sentence translation, and tags are optional supporting metadata, not one
-of the three slots.
+Sentence translation and tags are optional supporting metadata, not one of the
+four slots.
 
 ## Running it
 
@@ -43,6 +45,10 @@ npx ng build      # production build into dist/
   for common words and thin above roughly HSK 5 — Tatoeba skews beginner, and
   plenty of advanced words (顽固, for one) simply aren't in it. When there's no
   match the field says so and waits for you to type the sentence yourself.
+- **Definitions, looked up for you.** CC-CEDICT (117k terms) ships as a 5.9 MB
+  file, fetched when the Add-card screen opens and cached after. Enter a word
+  and field 4 fills in from the dictionary; a term CC-CEDICT has never heard of
+  says so and waits for you to type a gloss.
 - **FSRS scheduling** via [`ts-fsrs`](https://github.com/open-spaced-repetition/ts-fsrs),
   wrapped in `core/review/scheduler.ts` so the algorithm never leaks into
   components.
@@ -71,10 +77,12 @@ src/app/core/
   backup/                  JSON export/import, plus auto-backup to a folder
   pinyin/                  lazily loaded pinyin derivation
   corpus/                  example-sentence search + fetch
+  dictionary/              CC-CEDICT lookup + fetch
   assets/asset-url.ts      base-href-safe asset URLs
 src/app/shared/handwriting/  canvas pad, recogniser, vendored HanziLookupJS
 src/app/pages/             one folder per route
-scripts/build-corpus.mjs   regenerates public/corpus/cmn-eng.tsv
+scripts/build-corpus.mjs     regenerates public/corpus/cmn-eng.tsv
+scripts/build-dictionary.mjs regenerates public/dictionary/cedict.tsv
 ```
 
 ## Conventions
@@ -120,6 +128,21 @@ The output under `public/corpus/` is committed on purpose, so the deploy never
 depends on a third-party download. Filters and their rationale are documented at
 the top of the script.
 
+## Regenerating the dictionary
+
+Also roughly once a year. Download the CC-CEDICT plain-text export from
+<https://cc-cedict.org> (or mdbg.net's mirror), decompress it (it ships gzipped),
+then:
+
+```bash
+node scripts/build-dictionary.mjs --cedict cedict_1_0_ts_utf-8_mdbg.txt
+```
+
+Merges every sense CC-CEDICT has for a simplified headword into one
+flashcard-sized definition, keyed for O(1) lookup. Because CC-CEDICT is
+CC BY-SA 4.0, the output under `public/dictionary/` carries the same licence —
+see `public/licenses/NOTICES.txt`.
+
 ## Licence
 
 **GNU GPL v3** — see [`LICENSE`](LICENSE). The app bundles
@@ -129,5 +152,5 @@ the combined work is too.
 Third-party components and their licences are listed in
 [`public/licenses/NOTICES.txt`](public/licenses/NOTICES.txt) and credited in the
 app's Settings screen: HanziLookupJS (GPL-3.0), Make Me a Hanzi stroke data
-(Arphic Public License), Tatoeba sentences (CC BY 2.0 FR), pinyin-pro (MIT),
-ts-fsrs (MIT), Dexie (Apache-2.0).
+(Arphic Public License), Tatoeba sentences (CC BY 2.0 FR), CC-CEDICT definitions
+(CC BY-SA 4.0), pinyin-pro (MIT), ts-fsrs (MIT), Dexie (Apache-2.0).

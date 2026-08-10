@@ -14,6 +14,12 @@ interface CorpusMeta {
   lines: number;
 }
 
+/** What `public/dictionary/cedict.meta.json` holds, for the credits line. */
+interface DictionaryMeta {
+  retrievedAt: string;
+  terms: number;
+}
+
 @Component({
   selector: 'app-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,10 +38,11 @@ export class SettingsComponent implements OnInit {
   readonly importError = signal('');
   readonly busy = signal(false);
   readonly corpusMeta = signal<CorpusMeta | null>(null);
+  readonly dictionaryMeta = signal<DictionaryMeta | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.settingsStore.load();
-    await this.loadCorpusMeta();
+    await Promise.all([this.loadCorpusMeta(), this.loadDictionaryMeta()]);
   }
 
   /** Resolves against the base href, so it survives the `/flashcard/` deploy. */
@@ -55,6 +62,18 @@ export class SettingsComponent implements OnInit {
       }
     } catch {
       this.corpusMeta.set(null);
+    }
+  }
+
+  /** Same reasoning as `loadCorpusMeta`: a nice-to-have, never the credit itself. */
+  private async loadDictionaryMeta(): Promise<void> {
+    try {
+      const response = await fetch(assetUrl('dictionary/cedict.meta.json'));
+      if (response.ok) {
+        this.dictionaryMeta.set((await response.json()) as DictionaryMeta);
+      }
+    } catch {
+      this.dictionaryMeta.set(null);
     }
   }
 
