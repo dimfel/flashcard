@@ -49,6 +49,12 @@ npx ng build      # production build into dist/
 - **Back up your cards.** Settings → Export JSON. Browser storage is not durable;
   clearing site data wipes everything. The export file doubles as sync — keep it
   in cloud storage and import on another device.
+- **Automatic backup (desktop Chrome/Edge).** Settings → Automatic backup → point
+  it at a folder once, and `flashcards-latest.json` is rewritten there whenever
+  you change something, plus one dated snapshot per day (last 14 kept). Nothing
+  leaves your machine. Uses the File System Access API, which exists only in
+  desktop Chromium — Firefox, Safari and every phone browser fall back to the
+  manual export, and the panel says so rather than offering a dead button.
 
 ## Layout
 
@@ -58,7 +64,7 @@ src/app/core/
   db/                      Dexie schema, migrations, shared queries
   review/scheduler.ts      ts-fsrs wrapper, queue building, blankTerm
   state/                   signal-based stores (no RxJS)
-  backup/                  JSON export/import
+  backup/                  JSON export/import, plus auto-backup to a folder
   pinyin/                  lazily loaded pinyin derivation
   corpus/                  example-sentence search + fetch
   assets/asset-url.ts      base-href-safe asset URLs
@@ -81,6 +87,20 @@ deploys under `/flashcard/`.
 
 In review: `Space` reveal · `1`–`4` grade · `E` edit · `Z` undo.
 In the editor: `Ctrl`/`Cmd`+`Enter` saves and opens the next blank card.
+
+## Where to point automatic backup
+
+Anywhere except inside this repo while `ng serve` is running — the dev server
+watches the project tree, so a backup written into it triggers a rebuild on every
+save. A cloud-synced folder is the best choice: it survives a browser wipe *and*
+a dead disk, and doubles as the sync mechanism the export file already supports.
+If you do want backups in the project, put them somewhere like `backups/` and add
+that to `.gitignore`.
+
+Restoring: on a wiped browser the deck list offers **Choose backup folder…**,
+since the folder handle lives in IndexedDB and dies alongside the cards. Point it
+back at the folder and it reads `flashcards-latest.json` through the same
+newest-wins merge as a manual import.
 
 ## Regenerating the example corpus
 

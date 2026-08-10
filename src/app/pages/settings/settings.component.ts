@@ -4,7 +4,9 @@ import { BackupParseError } from '../../core/backup/backup';
 import { BackupService, type ImportResult } from '../../core/backup/backup.service';
 import { SettingsStore } from '../../core/state/settings.store';
 import { DeckStore } from '../../core/state/deck.store';
+import { AutoBackupService } from '../../core/backup/auto-backup.service';
 import { assetUrl } from '../../core/assets/asset-url';
+import { LATEST_FILENAME as LATEST_BACKUP_NAME } from '../../core/backup/auto-backup';
 
 /** What `public/corpus/cmn-eng.meta.json` holds, for the credits line. */
 interface CorpusMeta {
@@ -23,6 +25,7 @@ export class SettingsComponent implements OnInit {
   private readonly settingsStore = inject(SettingsStore);
   private readonly backupService = inject(BackupService);
   private readonly deckStore = inject(DeckStore);
+  protected readonly autoBackup = inject(AutoBackupService);
 
   readonly settings = this.settingsStore.settings;
   readonly importResult = signal<ImportResult | null>(null);
@@ -106,5 +109,50 @@ export class SettingsComponent implements OnInit {
   lastExportLabel(): string {
     const at = this.settings().lastExportAt;
     return at ? new Date(at).toLocaleDateString() : 'never';
+  }
+
+  lastAutoSavedLabel(): string {
+    const at = this.autoBackup.lastSavedAt();
+    return at ? new Date(at).toLocaleTimeString() : 'not yet this session';
+  }
+
+  async chooseBackupFolder(): Promise<void> {
+    this.busy.set(true);
+    try {
+      await this.autoBackup.chooseFolder();
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async reconnectBackupFolder(): Promise<void> {
+    this.busy.set(true);
+    try {
+      await this.autoBackup.reconnect();
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async stopAutoBackup(): Promise<void> {
+    await this.autoBackup.unlink();
+  }
+
+  /** Reads the linked folder's backup back in, through the same merge as import. */
+  async restoreFromBackupFolder(): Promise<void> {
+    this.busy.set(true);
+    this.importError.set('');
+    this.importResult.set(null);
+
+    try {
+      this.importResult.set(await this.autoBackup.restoreFromLink());
+      await this.deckStore.load();
+    } catch {
+      this.importError.set(
+        `No ${LATEST_BACKUP_NAME} was found in that folder, or it could not be read.`,
+      );
+    } finally {
+      this.busy.set(false);
+    }
   }
 }

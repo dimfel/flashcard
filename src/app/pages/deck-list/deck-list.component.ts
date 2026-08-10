@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { DeckStore, type DeckWithQueue } from '../../core/state/deck.store';
 import { SettingsStore } from '../../core/state/settings.store';
+import { AutoBackupService } from '../../core/backup/auto-backup.service';
 
 @Component({
   selector: 'app-deck-list',
@@ -14,6 +15,10 @@ import { SettingsStore } from '../../core/state/settings.store';
 export class DeckListComponent implements OnInit {
   private readonly deckStore = inject(DeckStore);
   private readonly settingsStore = inject(SettingsStore);
+  protected readonly autoBackup = inject(AutoBackupService);
+
+  readonly restoring = signal(false);
+  readonly restoreError = signal('');
 
   readonly decks = this.deckStore.decks;
   readonly loading = this.deckStore.loading;
@@ -55,6 +60,32 @@ export class DeckListComponent implements OnInit {
   async remove(deckId: string): Promise<void> {
     await this.deckStore.remove(deckId);
     this.confirmingDelete.set(null);
+  }
+
+  /**
+   * Pulls cards back out of a backup folder. Uses the linked folder if this
+   * profile still knows about one, and otherwise asks for it — which is the
+   * normal case after the wipe this feature exists to survive.
+   */
+  async restore(): Promise<void> {
+    this.restoring.set(true);
+    this.restoreError.set('');
+
+    try {
+      const result = this.autoBackup.canRestoreFromLink()
+        ? await this.autoBackup.restoreFromLink()
+        : await this.autoBackup.restoreFromPickedFolder();
+
+      if (result) {
+        await this.deckStore.load();
+      }
+    } catch {
+      this.restoreError.set(
+        'No flashcards-latest.json was found in that folder, or it could not be read.',
+      );
+    } finally {
+      this.restoring.set(false);
+    }
   }
 
   /** A deck with nothing due still opens — it just says so on arrival. */

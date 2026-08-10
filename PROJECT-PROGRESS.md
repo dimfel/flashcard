@@ -35,6 +35,9 @@ drawn), a real sentence it was met in, and its pinyin.
   and the corpus all load on first use. The initial bundle stays ~250 kB against
   a 500 kB warning budget — check this after any dependency change.
 - **The app is GPL-3.0**, because HanziLookupJS is. Accepted deliberately.
+- **Auto-backup is desktop-only and that is accepted.** The File System Access
+  API exists nowhere else; the phone keeps manual export and the stale nudge.
+  Restore is always offered, never silent.
 
 ---
 
@@ -47,6 +50,7 @@ drawn), a real sentence it was met in, and its pinyin.
 | FSRS wrapper, queue, `blankTerm`        | `core/review/scheduler.ts`       | ✅ Done |
 | Deck / card / session / settings stores | `core/state/`                    | ✅ Done |
 | JSON export + import (backup v2)        | `core/backup/`                   | ✅ Done |
+| Auto-backup to a folder (desktop only)  | `core/backup/auto-backup*`       | ✅ Done |
 | Pinyin derivation                       | `core/pinyin/`                   | ✅ Done |
 | Example-sentence corpus                 | `core/corpus/`, `scripts/`       | ✅ Done |
 | Handwriting pad + recogniser            | `shared/handwriting/`            | ✅ Done |
@@ -78,17 +82,30 @@ drawn), a real sentence it was met in, and its pinyin.
   `src/app/shared/handwriting/vendor/README.md` before re-vendoring.
 - **Corpus coverage is thin above ~HSK 5.** Tatoeba skews beginner; 顽固, the
   app's own placeholder word, has zero sentences. The empty state says so.
+- **Never import `AutoBackupService` from `app.config.ts` statically.** It pulls
+  Dexie and the backup layer into the initial bundle — measured at +107 kB, on a
+  feature phones cannot use. The app initializer feature-detects first and only
+  then `import()`s it.
+- **Auto-backup must not hook the `settings` table.** It stamps `lastExportAt`
+  after every save, so a hook there would re-arm its own debounce forever. The
+  hooks live in `FlashcardDb.trackChanges()` and skip `settings` and `handles`.
 
 ---
 
 ## Where we stopped (update this line each session)
 
-**Last checkpoint:** _2026-08-10 — Chinese-only pivot complete. Removed the
-structured usage note (Dexie v2 + backup v2), made field 3 auto-derived pinyin,
-added the offline handwriting pad, and shipped a 38k-pair Tatoeba corpus behind
-an on-demand sentence picker. Added GPL-3.0 licensing and in-app credits. Fixed
-a pre-existing flaky review spec caused by double `ngOnInit`. 143 tests passing,
-`ng build` clean, initial bundle 253 kB._
+**Last checkpoint:** _2026-08-10 — Automatic backup added. Dexie v3 introduces a
+`handles` table holding a File System Access directory handle, plus CRUD hooks
+feeding `onChanged()`. `AutoBackupService` writes `flashcards-latest.json` and a
+daily snapshot (14 kept) on a 10 s debounce, a 60 s ceiling, and on tab hide, and
+restores from a folder the user re-picks after a wipe. Desktop Chromium only, and
+lazily imported so the initial bundle stays 250 kB. 189 tests passing._
+
+_Previously: 2026-08-10 — Chinese-only pivot. Removed the structured usage note
+(Dexie v2 + backup v2), made field 3 auto-derived pinyin, added the offline
+handwriting pad, and shipped a 38k-pair Tatoeba corpus behind an on-demand
+sentence picker. Added GPL-3.0 licensing and in-app credits. Fixed a pre-existing
+flaky review spec caused by double `ngOnInit`._
 
 **Next up (all optional):**
 

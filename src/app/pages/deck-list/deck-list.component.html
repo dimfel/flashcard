@@ -58,6 +58,25 @@
   <div class="empty-state">
     <p>No decks yet.</p>
     <p>Create one to start collecting words.</p>
+
+    <!-- An empty deck list is also what a cleared browser looks like. The
+         backup folder handle is stored in IndexedDB, so a wipe takes it too —
+         which is why the usual path here is pointing at the folder again. -->
+    @if (autoBackup.supported) {
+      <div class="restore">
+        <p class="restore-lead">Lost your cards? Restore them from a backup folder.</p>
+        <button type="button" class="btn" [disabled]="restoring()" (click)="restore()">
+          @if (autoBackup.canRestoreFromLink()) {
+            Restore from {{ autoBackup.folderName() }}
+          } @else {
+            Choose backup folder…
+          }
+        </button>
+        @if (restoreError()) {
+          <p class="banner" role="alert">{{ restoreError() }}</p>
+        }
+      </div>
+    }
   </div>
 } @else {
   <ul class="deck-list">
