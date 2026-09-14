@@ -2,7 +2,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HANDWRITING_RECOGNIZER } from './handwriting.token';
-import type { HandwritingRecognizer, RecognizerStatus, Stroke } from './handwriting.types';
+import type {
+  HandwritingRecognizer,
+  RecognizerStatus,
+  Stroke,
+  WritingArea,
+} from './handwriting.types';
 import { HandwritingPadComponent } from './handwriting-pad.component';
 
 /**
@@ -25,8 +30,11 @@ class FakeRecognizer implements HandwritingRecognizer {
     return true;
   }
 
-  async lookup(strokes: readonly Stroke[]): Promise<string[]> {
+  lastArea?: WritingArea;
+
+  async lookup(strokes: readonly Stroke[], _limit?: number, area?: WritingArea): Promise<string[]> {
     this.lookups.push(strokes);
+    this.lastArea = area;
     return this.result;
   }
 
@@ -97,6 +105,16 @@ describe('HandwritingPadComponent', () => {
 
     expect(component.hasStrokes()).toBe(true);
     expect(component.candidates()).toEqual(['顽', '项', '顶']);
+  });
+
+  it('tells the recogniser how big the drawing surface is', async () => {
+    await drawStroke(1, [
+      [10, 10],
+      [10, 80],
+    ]);
+
+    expect(recognizer.lastArea?.width).toBeGreaterThan(0);
+    expect(recognizer.lastArea?.height).toBeGreaterThan(0);
   });
 
   it('accumulates strokes and sends them all to the recogniser', async () => {

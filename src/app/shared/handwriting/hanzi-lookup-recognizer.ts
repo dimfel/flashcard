@@ -90,6 +90,8 @@ export class HanziLookupRecognizer implements HandwritingRecognizer {
     } as HanziLookupApi['data'][string];
 
     this.library = library;
+    // Default looseness on purpose: measured against 口 and 十, widening it never
+    // rescues wrong stroke order and pushes joined-stroke matches out of the top 8.
     this.matcher = new library.Matcher(DATA_NAME);
   }
 }

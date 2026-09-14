@@ -183,7 +183,12 @@ export class HandwritingPadComponent {
       return;
     }
 
-    const matches = await this.recognizer.lookup(strokes, this.limit());
+    const canvas = this.canvasRef()?.nativeElement;
+    const area = {
+      width: canvas?.clientWidth || canvas?.width || 0,
+      height: canvas?.clientHeight || canvas?.height || 0,
+    };
+    const matches = await this.recognizer.lookup(strokes, this.limit(), area);
     if (seq !== this.lookupSeq) {
       return;
     }

@@ -24,6 +24,12 @@ export type RecognizerStatus =
   /** Load failed — almost always first use while offline. */
   | 'unavailable';
 
+/** The drawing surface in CSS pixels. Some recognisers scale strokes against it. */
+export interface WritingArea {
+  width: number;
+  height: number;
+}
+
 export interface HandwritingRecognizer {
   readonly status: Signal<RecognizerStatus>;
 
@@ -31,5 +37,5 @@ export interface HandwritingRecognizer {
   load(): Promise<boolean>;
 
   /** Candidate characters for `strokes`, best first. Empty if not loaded. */
-  lookup(strokes: readonly Stroke[], limit?: number): Promise<string[]>;
+  lookup(strokes: readonly Stroke[], limit?: number, area?: WritingArea): Promise<string[]>;
 }

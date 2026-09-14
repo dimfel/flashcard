@@ -1,4 +1,6 @@
 import { InjectionToken } from '@angular/core';
+import { CompositeRecognizer } from './composite-recognizer';
+import { GoogleInputRecognizer } from './google-input-recognizer';
 import { HanziLookupRecognizer } from './hanzi-lookup-recognizer';
 import type { HandwritingRecognizer } from './handwriting.types';
 
@@ -11,6 +13,7 @@ export const HANDWRITING_RECOGNIZER = new InjectionToken<HandwritingRecognizer>(
   'HANDWRITING_RECOGNIZER',
   {
     providedIn: 'root',
-    factory: () => new HanziLookupRecognizer(),
+    factory: () =>
+      new CompositeRecognizer(new GoogleInputRecognizer(), new HanziLookupRecognizer()),
   },
 );
