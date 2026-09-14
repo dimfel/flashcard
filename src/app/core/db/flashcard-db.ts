@@ -6,7 +6,7 @@
  * in RxJS here would buy convenience at the cost of two ways to do everything.
  */
 
-import Dexie, { type EntityTable, type Table } from 'dexie';
+import Dexie, { type EntityTable, type Table, type Transaction } from 'dexie';
 import {
   DEFAULT_SETTINGS,
   SETTINGS_ID,
@@ -17,21 +17,42 @@ import {
   type Settings,
 } from '../models/card.types';
 
-/** Key of the single row holding the auto-backup folder handle. */
-export const BACKUP_DIR_HANDLE_ID = 'backup-dir';
+/** Tables mirrored to the cloud. Order matters: parents are pushed before children. */
+export type SyncTable = 'decks' | 'cards' | 'scheduling' | 'reviewLogs' | 'settings';
+export const SYNC_TABLES: readonly SyncTable[] = [
+  'decks',
+  'cards',
+  'scheduling',
+  'reviewLogs',
+  'settings',
+];
+
+/** A local delete not yet pushed. `key` is the primary key, JSON-encoded if compound. */
+export interface Tombstone {
+  table: SyncTable;
+  key: string;
+  deletedAt: number;
+}
+
+export const SYNC_STATE_ID = 'sync';
+
+/** Sync cursors, reset whenever a different account signs in. */
+export interface SyncState {
+  id: string;
+  userId: string;
+  /** Per table, the newest server timestamp (epoch ms) pulled so far. */
+  pulledAt: Partial<Record<SyncTable, number>>;
+  /** Local `updatedAt` at or above which rows still need pushing. */
+  pushedAt: number;
+}
 
 /**
- * A directory handle the user has granted access to, parked in IndexedDB.
- *
- * Handles survive structured cloning, which is the only way to keep folder
- * access across visits. Note the consequence: clearing site data takes the
- * handle along with the cards, so this cannot rescue the app from a wipe on its
- * own — see `AutoBackupService`.
+ * Marks carried on the underlying IDBTransaction, which — unlike Dexie's
+ * `Transaction` wrapper — is shared by nested transactions.
  */
-export interface StoredHandle {
-  id: string;
-  handle: FileSystemDirectoryHandle;
-  linkedAt: number;
+interface TaggedIdbTransaction extends IDBTransaction {
+  deckcardRemote?: boolean;
+  deckcardTombstones?: Tombstone[];
 }
 
 export class FlashcardDb extends Dexie {
@@ -40,7 +61,8 @@ export class FlashcardDb extends Dexie {
   scheduling!: EntityTable<Scheduling, 'cardId'>;
   reviewLogs!: EntityTable<ReviewLog, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
-  handles!: EntityTable<StoredHandle, 'id'>;
+  tombstones!: Table<Tombstone, [SyncTable, string]>;
+  syncState!: EntityTable<SyncState, 'id'>;
 
   private readonly changeListeners = new Set<() => void>();
 
@@ -59,9 +81,7 @@ export class FlashcardDb extends Dexie {
 
     // v2 drops the structured `usage` note (field 3 became pinyin). The schema
     // is unchanged — `usage` was never indexed — so this version exists purely
-    // to carry the data migration. The store map is repeated rather than left
-    // empty so this block reads as the current truth; identical schemas are a
-    // no-op to Dexie.
+    // to carry the data migration.
     this.version(2)
       .stores({
         decks: 'id, name',
@@ -79,9 +99,7 @@ export class FlashcardDb extends Dexie {
           });
       });
 
-    // v3 adds `handles` for the auto-backup folder. Purely additive — Dexie
-    // creates the new store and leaves every existing row alone, so no upgrade
-    // function is needed.
+    // v3 added `handles` for the folder auto-backup, since replaced by sync.
     this.version(3).stores({
       decks: 'id, name',
       cards: 'id, deckId, term, updatedAt, *tags',
@@ -91,21 +109,46 @@ export class FlashcardDb extends Dexie {
       handles: 'id',
     });
 
+    // v4 is cloud sync: every synced table gets an indexed `updatedAt` (the push
+    // cursor), deletes leave tombstones, and the auto-backup handle store goes.
+    // Rows that predate it are backfilled so the first sign-in pushes them.
+    this.version(4)
+      .stores({
+        decks: 'id, name, updatedAt',
+        cards: 'id, deckId, term, updatedAt, *tags',
+        scheduling: '[cardId+direction], due, cardId, [cardId+due], updatedAt',
+        reviewLogs: 'id, cardId, reviewedAt, updatedAt',
+        settings: 'id, updatedAt',
+        tombstones: '[table+key], deletedAt',
+        syncState: 'id',
+        handles: null,
+      })
+      .upgrade(async (tx) => {
+        const now = Date.now();
+        for (const name of SYNC_TABLES) {
+          await tx
+            .table(name)
+            .toCollection()
+            .modify((row: { updatedAt?: number }) => {
+              row.updatedAt ??= now;
+            });
+        }
+      });
+
     this.trackChanges();
   }
 
   /**
-   * Notifies listeners whenever card data changes, so auto-backup knows the file
-   * on disk has gone stale.
+   * Stamps `updatedAt`, records tombstones, and notifies listeners for every
+   * local write to a synced table.
    *
    * Hooking Dexie rather than the stores means every write is caught, including
-   * writes from code not yet written — the failure mode of the alternative is a
-   * future mutation that silently stops being backed up.
+   * writes from code not yet written — the alternative fails as a future
+   * mutation that silently never syncs.
    *
-   * `settings` is deliberately excluded: auto-backup stamps `lastExportAt` when
-   * it finishes, and hooking that table would re-arm the debounce forever.
-   * Settings are still captured in every backup; they just don't trigger one.
-   * `handles` is excluded for the same reason.
+   * Writes made through `applyRemote` are skipped entirely: they already carry
+   * the server's `updatedAt`, and re-stamping or re-announcing them would bounce
+   * every pulled row straight back to the server.
    */
   private trackChanges(): void {
     const notify = () => {
@@ -114,22 +157,71 @@ export class FlashcardDb extends Dexie {
       }
     };
 
-    const tracked: Table<unknown, unknown>[] = [
-      this.decks as unknown as Table<unknown, unknown>,
-      this.cards as unknown as Table<unknown, unknown>,
-      this.scheduling as unknown as Table<unknown, unknown>,
-      this.reviewLogs as unknown as Table<unknown, unknown>,
-    ];
+    for (const name of SYNC_TABLES) {
+      const table = this.table(name);
 
-    for (const table of tracked) {
-      table.hook('creating', notify);
-      table.hook('updating', notify);
-      table.hook('deleting', notify);
+      table.hook('creating', (_primKey, obj: { updatedAt?: number }, tx) => {
+        if (isRemote(tx)) {
+          return;
+        }
+        obj.updatedAt = Date.now();
+        notify();
+      });
+
+      table.hook('updating', (_modifications, _primKey, _obj, tx) => {
+        if (isRemote(tx)) {
+          return undefined;
+        }
+        notify();
+        return { updatedAt: Date.now() };
+      });
+
+      table.hook('deleting', (primKey, _obj, tx) => {
+        if (isRemote(tx)) {
+          return;
+        }
+        this.recordTombstone(tx, name, primKey);
+        notify();
+      });
     }
   }
 
   /**
-   * Subscribes to data changes. Returns an unsubscribe function.
+   * A hook may only write to tables in its transaction's scope, and deletes
+   * come from many scopes. So tombstones are collected on the transaction and
+   * written once it commits. A crash in that gap makes the deleted row reappear
+   * after the next pull — an annoyance, never a loss.
+   */
+  private recordTombstone(tx: Transaction, table: SyncTable, primKey: unknown): void {
+    const idb = tx.idbtrans as TaggedIdbTransaction;
+    const tombstone: Tombstone = {
+      table,
+      key: typeof primKey === 'string' ? primKey : JSON.stringify(primKey),
+      deletedAt: Date.now(),
+    };
+
+    if (idb.deckcardTombstones) {
+      idb.deckcardTombstones.push(tombstone);
+      return;
+    }
+
+    const pending = [tombstone];
+    idb.deckcardTombstones = pending;
+    idb.addEventListener('complete', () => {
+      void this.tombstones.bulkPut(pending);
+    });
+  }
+
+  /** Runs `work` in a transaction whose writes are not stamped, announced, or tombstoned. */
+  async applyRemote(tableNames: string[], work: () => Promise<void>): Promise<void> {
+    await this.transaction('rw', tableNames, async (tx) => {
+      (tx.idbtrans as TaggedIdbTransaction).deckcardRemote = true;
+      await work();
+    });
+  }
+
+  /**
+   * Subscribes to local data changes. Returns an unsubscribe function.
    *
    * Fires once per row, so a bulk import calls it hundreds of times — listeners
    * must be cheap enough to survive that, i.e. set a flag rather than do work.
@@ -145,17 +237,12 @@ export class FlashcardDb extends Dexie {
     if (existing) {
       return existing;
     }
-    await this.settings.put(DEFAULT_SETTINGS);
+    // Copied: the creating hook stamps `updatedAt` onto the object it is given.
+    await this.settings.put({ ...DEFAULT_SETTINGS });
     return { ...DEFAULT_SETTINGS };
   }
 
-  /**
-   * Wipes all card data and settings.
-   *
-   * `handles` is left alone on purpose: the auto-backup folder is a property of
-   * this browser profile, not of the data, and re-picking it needs a user
-   * gesture that a bulk clear cannot supply.
-   */
+  /** Wipes all card data and settings. `clear()` fires no hooks, so nothing syncs as deleted. */
   async clearAll(): Promise<void> {
     await this.transaction(
       'rw',
@@ -175,6 +262,10 @@ export class FlashcardDb extends Dexie {
       },
     );
   }
+}
+
+function isRemote(tx: Transaction | undefined): boolean {
+  return (tx?.idbtrans as TaggedIdbTransaction | undefined)?.deckcardRemote === true;
 }
 
 let instance: FlashcardDb | undefined;

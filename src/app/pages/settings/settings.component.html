@@ -1,11 +1,93 @@
 <h1>Settings</h1>
 
 <section class="card-surface panel">
-  <h2>Backup</h2>
+  <h2>Account &amp; sync</h2>
+
+  @switch (sync.status()) {
+    @case ('unconfigured') {
+      <p class="panel-note">
+        Sync isn’t set up in this build (see <code>supabase/README.md</code>). Until it is, cards live
+        only in this browser — use <strong>Export JSON</strong> below to keep a copy.
+      </p>
+    }
+    @case ('signed-out') {
+      <p class="panel-note">
+        Sign in to keep your cards in the cloud and on every device you use. You’ll get a 6-digit
+        code by email — no password.
+      </p>
+
+      @if (!codeSent()) {
+        <form class="panel-actions" (ngSubmit)="sendCode()">
+          <input
+            class="input"
+            type="email"
+            name="email"
+            autocomplete="email"
+            placeholder="you@example.com"
+            [ngModel]="email()"
+            (ngModelChange)="email.set($event)"
+          />
+          <button type="submit" class="btn btn-primary" [disabled]="busy() || !email().trim()">
+            Send code
+          </button>
+        </form>
+      } @else {
+        <p class="panel-note">
+          Code sent to <strong>{{ email() }}</strong>.
+        </p>
+        <form class="panel-actions" (ngSubmit)="verifyCode()">
+          <input
+            class="input narrow"
+            name="code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            placeholder="123456"
+            [ngModel]="code()"
+            (ngModelChange)="code.set($event)"
+          />
+          <button type="submit" class="btn btn-primary" [disabled]="busy() || !code().trim()">
+            Sign in
+          </button>
+          <button type="button" class="btn" [disabled]="busy()" (click)="codeSent.set(false)">
+            Use a different email
+          </button>
+        </form>
+      }
+    }
+    @default {
+      <p class="panel-note">
+        Signed in as <strong>{{ sync.email() }}</strong> · {{ syncStatusLabel() }}
+      </p>
+      @if (sync.status() === 'error' && sync.error()) {
+        <p class="banner import-error" role="alert">{{ sync.error() }}</p>
+      }
+      <div class="panel-actions">
+        <button
+          type="button"
+          class="btn btn-primary"
+          [disabled]="busy() || sync.status() === 'syncing'"
+          (click)="syncNow()"
+        >
+          Sync now
+        </button>
+        <button type="button" class="btn" [disabled]="busy()" (click)="signOut()">Sign out</button>
+      </div>
+    }
+  }
+
+  @if (syncMessage()) {
+    <p class="banner import-error" role="alert">{{ syncMessage() }}</p>
+  }
+  @if (sync.storage(); as storage) {
+    <p class="panel-note">{{ storageLabel(storage) }}</p>
+  }
+</section>
+
+<section class="card-surface panel">
+  <h2>Backup file</h2>
   <p class="panel-note">
-    Every card lives in this browser’s storage. Clearing site data — or switching device — loses it
-    all unless you have a file. Export is also how you sync: keep the file in cloud storage and
-    import it on the other device.
+    Everything as one JSON file — for keeping an archive, or moving your cards somewhere sync
+    doesn’t reach. Once you’re signed in, you don’t need this day to day.
   </p>
   <p class="panel-note">
     Last export: <strong>{{ lastExportLabel() }}</strong>
@@ -30,68 +112,6 @@
   }
   @if (importError()) {
     <p class="banner import-error" role="alert">{{ importError() }}</p>
-  }
-</section>
-
-<section class="card-surface panel">
-  <h2>Automatic backup</h2>
-
-  @if (!autoBackup.supported) {
-    <p class="panel-note">
-      Automatic backup needs the File System Access API, which only desktop Chrome, Edge and Opera
-      provide — not Firefox, Safari, or any phone browser. Use <strong>Export JSON</strong> above on
-      this device.
-    </p>
-  } @else {
-    <p class="panel-note">
-      Point this at a folder once and a current <code>flashcards-latest.json</code> is written there
-      whenever you change something, plus one dated snapshot per day. Nothing leaves your machine.
-    </p>
-
-    @switch (autoBackup.status()) {
-      @case ('unlinked') {
-        <p class="panel-note">No folder chosen — nothing is being saved automatically.</p>
-        <div class="panel-actions">
-          <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="chooseBackupFolder()">
-            Choose folder…
-          </button>
-        </div>
-      }
-      @case ('needs-permission') {
-        <p class="banner import-error" role="alert">
-          Backups are paused: the browser needs your permission again for
-          <strong>{{ autoBackup.folderName() }}</strong>.
-        </p>
-        <div class="panel-actions">
-          <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="reconnectBackupFolder()">
-            Reconnect
-          </button>
-          <button type="button" class="btn" (click)="stopAutoBackup()">Stop auto-backup</button>
-        </div>
-      }
-      @default {
-        <p class="panel-note">
-          Saving to <strong>{{ autoBackup.folderName() }}</strong> ·
-          @if (autoBackup.status() === 'saving') {
-            saving now…
-          } @else {
-            last saved {{ lastAutoSavedLabel() }}
-          }
-        </p>
-        @if (autoBackup.status() === 'error' && autoBackup.error()) {
-          <p class="banner import-error" role="alert">{{ autoBackup.error() }}</p>
-        }
-        <div class="panel-actions">
-          <button type="button" class="btn" [disabled]="busy()" (click)="chooseBackupFolder()">
-            Change folder…
-          </button>
-          <button type="button" class="btn" [disabled]="busy()" (click)="restoreFromBackupFolder()">
-            Restore from folder
-          </button>
-          <button type="button" class="btn" (click)="stopAutoBackup()">Stop auto-backup</button>
-        </div>
-      }
-    }
   }
 </section>
 
@@ -191,6 +211,13 @@
         target="_blank"
         rel="noopener"
         >ts-fsrs</a
+      >
+      (MIT).
+    </li>
+    <li>
+      <strong>Sync</strong> —
+      <a href="https://github.com/supabase/supabase-js" target="_blank" rel="noopener"
+        >supabase-js</a
       >
       (MIT).
     </li>

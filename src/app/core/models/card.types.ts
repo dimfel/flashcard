@@ -11,6 +11,10 @@
  * collocations and near-synonym contrasts. It was the most expensive field to
  * author and the least often filled, and it is gone as of Dexie v2; see the
  * migration in `core/db/flashcard-db.ts`.
+ *
+ * `updatedAt` on every synced row is stamped by `FlashcardDb` on each local
+ * write, so callers never set it. It is optional in the types only because rows
+ * built in memory have not been written yet.
  */
 
 import type { Card as FsrsCard } from 'ts-fsrs';
@@ -28,6 +32,7 @@ export interface Deck {
   /** Whether cards in this deck are also drilled in the production direction. */
   productionEnabled: boolean;
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface Card {
@@ -78,6 +83,7 @@ export interface Scheduling {
   state: number;
   /** Opaque ts-fsrs card state. Only core/review/scheduler.ts should read inside. */
   fsrs: FsrsCard;
+  updatedAt?: number;
 }
 
 export interface ReviewLog {
@@ -91,6 +97,7 @@ export interface ReviewLog {
   elapsedMs: number;
   /** The scheduling row as it was BEFORE this grade, so a grade can be undone. */
   previous: Scheduling;
+  updatedAt?: number;
 }
 
 /** App-wide settings. Single row, keyed by SETTINGS_ID. */
@@ -100,8 +107,9 @@ export interface Settings {
   newCardsPerDay: number;
   /** FSRS target retention (0.7–0.98). Higher means shorter intervals. */
   targetRetention: number;
-  /** Epoch ms of the last successful backup export, or 0 if never. */
+  /** Epoch ms of the last manual JSON export, or 0 if never. Not synced. */
   lastExportAt: number;
+  updatedAt?: number;
 }
 
 export const SETTINGS_ID = 'app-settings';

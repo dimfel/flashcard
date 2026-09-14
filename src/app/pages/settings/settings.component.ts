@@ -4,9 +4,12 @@ import { BackupParseError } from '../../core/backup/backup';
 import { BackupService, type ImportResult } from '../../core/backup/backup.service';
 import { SettingsStore } from '../../core/state/settings.store';
 import { DeckStore } from '../../core/state/deck.store';
-import { AutoBackupService } from '../../core/backup/auto-backup.service';
+import {
+  describeSyncError,
+  SyncService,
+  type StorageReport,
+} from '../../core/sync/sync.service';
 import { assetUrl } from '../../core/assets/asset-url';
-import { LATEST_FILENAME as LATEST_BACKUP_NAME } from '../../core/backup/auto-backup';
 
 /** What `public/corpus/cmn-eng.meta.json` holds, for the credits line. */
 interface CorpusMeta {
@@ -31,7 +34,7 @@ export class SettingsComponent implements OnInit {
   private readonly settingsStore = inject(SettingsStore);
   private readonly backupService = inject(BackupService);
   private readonly deckStore = inject(DeckStore);
-  protected readonly autoBackup = inject(AutoBackupService);
+  protected readonly sync = inject(SyncService);
 
   readonly settings = this.settingsStore.settings;
   readonly importResult = signal<ImportResult | null>(null);
@@ -40,7 +43,13 @@ export class SettingsComponent implements OnInit {
   readonly corpusMeta = signal<CorpusMeta | null>(null);
   readonly dictionaryMeta = signal<DictionaryMeta | null>(null);
 
+  readonly email = signal('');
+  readonly code = signal('');
+  readonly codeSent = signal(false);
+  readonly syncMessage = signal('');
+
   async ngOnInit(): Promise<void> {
+    void this.sync.init();
     await this.settingsStore.load();
     await Promise.all([this.loadCorpusMeta(), this.loadDictionaryMeta()]);
   }
@@ -130,46 +139,65 @@ export class SettingsComponent implements OnInit {
     return at ? new Date(at).toLocaleDateString() : 'never';
   }
 
-  lastAutoSavedLabel(): string {
-    const at = this.autoBackup.lastSavedAt();
-    return at ? new Date(at).toLocaleTimeString() : 'not yet this session';
+  async sendCode(): Promise<void> {
+    await this.runSyncAction(async () => {
+      await this.sync.sendCode(this.email());
+      this.codeSent.set(true);
+    });
   }
 
-  async chooseBackupFolder(): Promise<void> {
-    this.busy.set(true);
-    try {
-      await this.autoBackup.chooseFolder();
-    } finally {
-      this.busy.set(false);
-    }
-  }
-
-  async reconnectBackupFolder(): Promise<void> {
-    this.busy.set(true);
-    try {
-      await this.autoBackup.reconnect();
-    } finally {
-      this.busy.set(false);
-    }
-  }
-
-  async stopAutoBackup(): Promise<void> {
-    await this.autoBackup.unlink();
-  }
-
-  /** Reads the linked folder's backup back in, through the same merge as import. */
-  async restoreFromBackupFolder(): Promise<void> {
-    this.busy.set(true);
-    this.importError.set('');
-    this.importResult.set(null);
-
-    try {
-      this.importResult.set(await this.autoBackup.restoreFromLink());
+  async verifyCode(): Promise<void> {
+    await this.runSyncAction(async () => {
+      await this.sync.verifyCode(this.email(), this.code());
+      this.codeSent.set(false);
+      this.code.set('');
       await this.deckStore.load();
-    } catch {
-      this.importError.set(
-        `No ${LATEST_BACKUP_NAME} was found in that folder, or it could not be read.`,
-      );
+    });
+  }
+
+  async syncNow(): Promise<void> {
+    await this.runSyncAction(async () => {
+      await this.sync.sync();
+      await this.deckStore.load();
+    });
+  }
+
+  async signOut(): Promise<void> {
+    await this.runSyncAction(() => this.sync.signOut());
+  }
+
+  syncStatusLabel(): string {
+    switch (this.sync.status()) {
+      case 'syncing':
+        return 'syncing…';
+      case 'offline':
+        return 'offline — will sync when reconnected';
+      case 'error':
+        return 'last sync failed';
+      default: {
+        const at = this.sync.lastSyncedAt();
+        return at ? `last synced ${new Date(at).toLocaleTimeString()}` : 'not synced yet this session';
+      }
+    }
+  }
+
+  storageLabel(report: StorageReport): string {
+    const usage =
+      report.usageBytes === null
+        ? 'Stored on this device'
+        : `Using ${(report.usageBytes / 1_048_576).toFixed(1)} MB on this device`;
+    return report.persisted
+      ? `${usage} · protected from automatic clearing.`
+      : `${usage} · the browser may clear this if disk space runs low.`;
+  }
+
+  private async runSyncAction(action: () => Promise<void>): Promise<void> {
+    this.busy.set(true);
+    this.syncMessage.set('');
+    try {
+      await action();
+    } catch (error) {
+      this.syncMessage.set(describeSyncError(error));
     } finally {
       this.busy.set(false);
     }

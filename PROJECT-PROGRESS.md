@@ -14,7 +14,8 @@ is entered.
 
 **Run it:** `npm install`, then `npx ng serve` → http://localhost:4200
 **Build check:** `npx ng build` (passes clean)
-**Tests:** `npx ng test` (228 passing)
+**Tests:** `npx ng test` (222 passing)
+**Sync setup:** `supabase/README.md` (one-time, manual)
 
 ---
 
@@ -37,13 +38,23 @@ is entered.
 - **No RxJS anywhere**, including Dexie `liveQuery`. Stores expose signals and
   reload explicitly after writes.
 - **Everything heavy is lazy.** pinyin-pro, the recogniser, the stroke database,
-  the corpus, and the dictionary all load on first use. The initial bundle stays
-  ~250 kB against a 500 kB warning budget — check this after any dependency
-  change.
+  the corpus, the dictionary, and supabase-js all load on first use. The initial
+  bundle stays ~253 kB against a 500 kB warning budget — check this after any
+  dependency change.
 - **The app is GPL-3.0**, because HanziLookupJS is. Accepted deliberately.
-- **Auto-backup is desktop-only and that is accepted.** The File System Access
-  API exists nowhere else; the phone keeps manual export and the stale nudge.
-  Restore is always offered, never silent.
+- **Handwriting is online-first.** HanziLookup filters by stroke count and
+  aligns strokes in drawn order, so wrong order or joined strokes lose the right
+  character. When connected, strokes go to Google Input Tools (undocumented
+  endpoint, CORS-open, order-insensitive); offline, or on any failure, it falls
+  back to HanziLookup. Drawings leave the device when online — credited and
+  disclosed in Settings.
+- **Sync is Supabase, local-first.** Dexie stays the source of truth for every
+  screen; `SyncService` mirrors it to Postgres in the background (pull, then
+  push; newest `updatedAt` wins; deletes travel as tombstones). The Postgres
+  schema uses typed snake_case columns so a future web app can use it directly.
+  Sign-in is an emailed 6-digit code, never a magic link (a link opens the
+  browser, not the installed PWA, which has separate storage). Folder
+  auto-backup was removed; manual Export/Import JSON remains as an escape hatch.
 
 ---
 
@@ -52,15 +63,15 @@ is entered.
 | Area                                    | File(s)                          | Status  |
 | --------------------------------------- | -------------------------------- | ------- |
 | Data model                              | `core/models/card.types.ts`      | ✅ Done |
-| Dexie schema + v2 migration             | `core/db/`                       | ✅ Done |
+| Dexie schema + migrations (v4 = sync)   | `core/db/`                       | ✅ Done |
 | FSRS wrapper, queue, `blankTerm`        | `core/review/scheduler.ts`       | ✅ Done |
 | Deck / card / session / settings stores | `core/state/`                    | ✅ Done |
 | JSON export + import (backup v2)        | `core/backup/`                   | ✅ Done |
-| Auto-backup to a folder (desktop only)  | `core/backup/auto-backup*`       | ✅ Done |
+| Cloud sync (Supabase)                   | `core/sync/`, `supabase/`        | ✅ Code done — project not yet created |
 | Pinyin derivation                       | `core/pinyin/`                   | ✅ Done |
 | Example-sentence corpus                 | `core/corpus/`, `scripts/`       | ✅ Done |
 | Definition dictionary (CC-CEDICT)       | `core/dictionary/`, `scripts/`   | ✅ Done |
-| Handwriting pad + recogniser            | `shared/handwriting/`            | ✅ Done |
+| Handwriting pad + recognisers           | `shared/handwriting/`            | ✅ Done |
 | Deck list                               | `pages/deck-list/`               | ✅ Done |
 | Card editor                             | `pages/card-editor/`             | ✅ Done |
 | Browse + search                         | `pages/card-browse/`             | ✅ Done |
@@ -78,75 +89,77 @@ is entered.
   evaluation. `fake-indexeddb` is installed by `src/testing/vitest-setup.ts`
   (wired in `angular.json`) so the ordering is deterministic; `getDb()` is lazy
   for the same reason.
-- **Components must not have an `async ngOnInit`.** `review` and `card-editor`
-  wrap their loads in `PendingTasks.run(...)` so `ApplicationRef.isStable` — and
-  therefore `fixture.whenStable()` — accounts for them. Specs must never call
-  `ngOnInit()` by hand: Angular calls it too, and the second, un-awaited call
-  used to make the review spec flaky about one run in five.
+- **Components must not have an `async ngOnInit`** where a spec drives them.
+  `review` and `card-editor` wrap their loads in `PendingTasks.run(...)` so
+  `ApplicationRef.isStable` — and therefore `fixture.whenStable()` — accounts
+  for them. Specs must never call `ngOnInit()` by hand.
 - **`assetUrl()` for every runtime asset.** A root-absolute `/hanzi/...` works in
   dev and 404s on GitHub Pages under `--base-href /flashcard/`.
 - **The vendored recogniser is byte-identical to upstream plus one line.** See
   `src/app/shared/handwriting/vendor/README.md` before re-vendoring.
+- **Don't widen HanziLookup's looseness.** Measured on 口 and 十: 0.3 and 0.5
+  never rescue wrong stroke order, and 0.3 pushes joined-stroke 口 out of the
+  top 8 that 0.15 kept it in.
+- **Google's handwriting response mixes in punctuation** (一 arrives with `-`,
+  `_`, `/`). `parseCandidates` keeps Han characters only.
+- **`CompositeRecognizer.status` is `ready` whenever online**, even if the
+  offline stroke DB failed to load — the pad hides candidates on `unavailable`.
 - **Corpus coverage is thin above ~HSK 5.** Tatoeba skews beginner. 顽固 has
-  **zero** sentences, which is why it is no longer the placeholder — the first
-  word anyone typed produced nothing and read as a broken feature. Placeholders
+  **zero** sentences, which is why it is no longer the placeholder. Placeholders
   now use 突然 (56 hits). Check coverage before changing them again.
 - **Field 2 and field 4 auto-fill, and must not clobber typed content.**
   `sentenceMode` and `meaningMode` mirror `pinyinMode`: typing takes the field
-  over, emptying the box hands it back. Editing a saved card starts `sentence`
-  as always-`manual` (it's required to save, so it's never blank) but `pinyin`
-  and `meaning` start `manual` only if the saved card actually has a value —
-  a card saved before a feature existed still gets backfilled.
+  over, emptying the box hands it back.
 - **Fields 2, 3, and 4 derive in parallel from `setTerm()`**, via
-  `Promise.all`. They are three independent lazy assets (corpus, pinyin-pro,
-  dictionary); serialising them would triple the wait on a cold start. Each has
-  its own three-way staleness guard (sequence number, mode, and term-still-
-  matches) since any one download can outlast the keystroke that started it.
-- **Never import `AutoBackupService` from `app.config.ts` statically.** It pulls
-  Dexie and the backup layer into the initial bundle — measured at +107 kB, on a
-  feature phones cannot use. The app initializer feature-detects first and only
-  then `import()`s it.
-- **Auto-backup must not hook the `settings` table.** It stamps `lastExportAt`
-  after every save, so a hook there would re-arm its own debounce forever. The
-  hooks live in `FlashcardDb.trackChanges()` and skip `settings` and `handles`.
+  `Promise.all`, each with its own three-way staleness guard.
+- **Never import `SyncService` from `app.config.ts` statically.** It pulls Dexie
+  and the sync layer into the initial bundle. The app initializer `import()`s it.
+  `SupabaseBackend` likewise `import()`s supabase-js on first use.
+- **`updatedAt` is stamped by Dexie hooks, not by callers**
+  (`FlashcardDb.trackChanges`). It is the push cursor, so a write that bypasses
+  the hooks never syncs. Writes inside `db.applyRemote(...)` are deliberately
+  unstamped, unannounced, and untombstoned — that is what stops pulled rows
+  echoing back. The tag lives on the underlying `IDBTransaction`, which nested
+  Dexie transactions share.
+- **Tombstones are written after the deleting transaction commits** (hooks
+  can't write outside their scope). A crash in that gap resurrects the row on
+  next pull — accepted. `table.clear()` fires no hooks, so `clearAll()` never
+  deletes anything in the cloud.
+- **Sync cursors are saved only after pull *and* push succeed**; a failure
+  re-runs both, and re-applying a row is harmless. Pulls re-read 5 s behind the
+  cursor because `server_updated_at` is a transaction-start time.
+- **`lastExportAt` is per-device** and never synced; a pull keeps the local one.
 
 ---
 
 ## Where we stopped (update this line each session)
 
-**Last checkpoint:** _2026-08-10 — Field 4 (Definition) added, auto-filled from
-a bundled CC-CEDICT (117k terms, 5.9 MB, `scripts/build-dictionary.mjs`).
-Reuses `Card.meaning` — no schema change. `meaningMode` mirrors `pinyinMode`/
-`sentenceMode` exactly (auto/manual, empty-to-rearm, backfill-only-if-blank on
-edit), and `fillDefinition` shares the same three-way staleness guard. Also
-fixed field 2 (sentence) to auto-fill immediately instead of waiting behind a
-"Find example sentences" button — the placeholder word 顽固 turned out to have
-zero Tatoeba hits, which read as the whole feature being broken; placeholders
-now use 突然. 228 tests passing, initial bundle unchanged at ~250 kB._
+**Last checkpoint:** _2026-09-14 — Two changes. (1) Handwriting: added
+`GoogleInputRecognizer` + `CompositeRecognizer` (online-first, HanziLookup
+fallback); looseness tuning was tried and measured worse. (2) Storage: Supabase
+sync replaces folder auto-backup. Dexie v4 adds indexed `updatedAt` on all
+synced tables, `tombstones`, `syncState`, drops `handles`. New `core/sync/`
+(mappers, backend seam, Supabase backend, `SyncService`), Settings "Account &
+sync" (email code sign-in, sync now, storage persistence line), deck list
+nudges sign-in instead of folder restore. SQL + setup steps in `supabase/`.
+Also calls `navigator.storage.persist()` at start. 222 tests passing, initial
+bundle ~253 kB. Not yet exercised against a real Supabase project or in a real
+browser._
 
-_Previously: 2026-08-10 — Automatic backup added. Dexie v3 introduces a
-`handles` table holding a File System Access directory handle, plus CRUD hooks
-feeding `onChanged()`. `AutoBackupService` writes `flashcards-latest.json` and a
-daily snapshot (14 kept) on a 10 s debounce, a 60 s ceiling, and on tab hide, and
-restores from a folder the user re-picks after a wipe. Desktop Chromium only, and
-lazily imported so the initial bundle stays 250 kB._
+_Previously: 2026-08-10 — Field 4 (Definition) auto-filled from a bundled
+CC-CEDICT; field 2 auto-fills immediately; placeholders moved to 突然._
 
-_Before that: 2026-08-10 — Chinese-only pivot. Removed the structured usage note
-(Dexie v2 + backup v2), made field 3 auto-derived pinyin, added the offline
-handwriting pad, and shipped a 38k-pair Tatoeba corpus behind an on-demand
-sentence picker. Added GPL-3.0 licensing and in-app credits. Fixed a pre-existing
-flaky review spec caused by double `ngOnInit`._
+**Next up:**
 
-**Next up (all optional):**
-
-- [ ] Deploy to GitHub Pages and install to phone — the workflow exists but
-      pushes on branch `claude/flashcard-app-planning-5d2rxb`, not `main`.
-- [ ] Verify handwriting and the sentence picker on a real touch device; the pad
-      is only mouse-tested so far.
+- [ ] Create the Supabase project and fill `core/sync/supabase.config.ts`
+      (`supabase/README.md`), then sign in on the device that has the cards first.
+- [ ] Try sync end-to-end on two browsers: add, edit, grade, delete, offline edit.
+- [ ] Verify handwriting on a real touch device, online and in airplane mode.
+- [ ] Deploy to GitHub Pages and install to phone — the workflow pushes on branch
+      `claude/flashcard-app-planning-5d2rxb`, not `main`.
 - [ ] Tag filtering on the browse screen (data is already stored and searchable).
 - [ ] Per-deck FSRS retention rather than one global setting.
-- [ ] Filter Traditional out of the corpus properly (currently a character-set
-      heuristic in `scripts/build-corpus.mjs`; OpenCC would be exact).
+- [ ] Filter Traditional out of the corpus properly (OpenCC would be exact).
 - [ ] Capacitor wrap for a native Android build with share-sheet capture.
 
 > When you want to continue, tell Claude: **"resume from PROJECT-PROGRESS.md, do

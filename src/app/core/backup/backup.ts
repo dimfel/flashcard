@@ -72,7 +72,7 @@ export function parseBackup(json: string): BackupFile {
   };
 }
 
-function reviveScheduling(row: Scheduling): Scheduling {
+export function reviveScheduling(row: Scheduling): Scheduling {
   const fsrs = { ...row.fsrs, due: new Date(row.fsrs.due) };
   if (row.fsrs.last_review) {
     fsrs.last_review = new Date(row.fsrs.last_review);
