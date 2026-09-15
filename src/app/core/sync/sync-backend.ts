@@ -13,8 +13,9 @@ export interface SyncBackend {
   readonly configured: boolean;
   /** The signed-in user from a persisted session, without a network call. */
   currentUser(): Promise<SyncUser | null>;
-  sendCode(email: string): Promise<void>;
-  verifyCode(email: string, code: string): Promise<SyncUser>;
+  signIn(email: string, password: string): Promise<SyncUser>;
+  /** Creates the account and signs straight in; requires "Confirm email" to be off. */
+  signUp(email: string, password: string): Promise<SyncUser>;
   signOut(): Promise<void>;
   /** Rows whose `server_updated_at` is at or after `sinceMs`, oldest first. */
   pull(table: SyncTable, sinceMs: number): Promise<RemoteRecord[]>;

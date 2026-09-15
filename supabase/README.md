@@ -6,22 +6,21 @@ cards stay in the browser only and Settings says sync isn't set up.
 1. **Create a project** at <https://supabase.com/dashboard>. The free tier is plenty.
 2. **Create the tables.** Open SQL Editor → New query, paste all of
    `supabase/migrations/0001_init.sql`, and run it.
-3. **Make sign-in emails carry a code.**
-   - Go to Authentication → Emails → **Magic Link** template.
-   - Put `{{ .Token }}` in the body, e.g. `Your DeckCard code is {{ .Token }}`.
-   - Without this, Supabase emails a link instead of the 6-digit code the app asks for. A link
-     would open in the browser rather than the installed app, which has its own storage.
-   - Email sign-in is on by default (Authentication → Sign In / Providers → Email).
+3. **Turn off email confirmation.**
+   - Go to Authentication → Sign In / Providers → **Email**, switch off **Confirm email**, and save.
+   - The app signs in with email + password and never sends an email. Without this step, Supabase
+     holds each new account until a confirmation link is clicked. Its built-in sender only sends
+     2 emails an hour, and only to your Supabase team's addresses, so that link may never arrive.
 4. **Point the app at it.**
    - Copy the Project URL and the publishable (anon) key from Project Settings → API into
      `src/app/core/sync/supabase.config.ts`.
    - Both are meant to be public. Row-level security is what stops one account from reading
      another's rows.
-5. **Sign in.** Open Settings → Account & sync on the device that has your cards and sign in first,
-   so they upload. Then sign in on your other devices.
+5. **Create your account.** On the device that has your cards, open Settings → Account & sync.
+   Enter an email and a password (6+ characters) and choose **Create account**, so your cards
+   upload. On every other device, use the same email and password with **Sign in**.
 
-Supabase's built-in email sender is rate-limited to a few messages an hour. That's fine for one
-person. For more, set up custom SMTP under Authentication → Emails.
+No SMTP server is needed, because the app never sends email. The email is only your login name.
 
 ## How it syncs
 

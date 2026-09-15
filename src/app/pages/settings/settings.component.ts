@@ -44,8 +44,7 @@ export class SettingsComponent implements OnInit {
   readonly dictionaryMeta = signal<DictionaryMeta | null>(null);
 
   readonly email = signal('');
-  readonly code = signal('');
-  readonly codeSent = signal(false);
+  readonly password = signal('');
   readonly syncMessage = signal('');
 
   async ngOnInit(): Promise<void> {
@@ -139,18 +138,23 @@ export class SettingsComponent implements OnInit {
     return at ? new Date(at).toLocaleDateString() : 'never';
   }
 
-  async sendCode(): Promise<void> {
+  /** Supabase rejects passwords under 6 characters. */
+  canSubmit(): boolean {
+    return this.email().trim() !== '' && this.password().length >= 6;
+  }
+
+  async signIn(): Promise<void> {
     await this.runSyncAction(async () => {
-      await this.sync.sendCode(this.email());
-      this.codeSent.set(true);
+      await this.sync.signIn(this.email(), this.password());
+      this.password.set('');
+      await this.deckStore.load();
     });
   }
 
-  async verifyCode(): Promise<void> {
+  async createAccount(): Promise<void> {
     await this.runSyncAction(async () => {
-      await this.sync.verifyCode(this.email(), this.code());
-      this.codeSent.set(false);
-      this.code.set('');
+      await this.sync.createAccount(this.email(), this.password());
+      this.password.set('');
       await this.deckStore.load();
     });
   }

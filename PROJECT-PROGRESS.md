@@ -52,8 +52,10 @@ is entered.
   screen; `SyncService` mirrors it to Postgres in the background (pull, then
   push; newest `updatedAt` wins; deletes travel as tombstones). The Postgres
   schema uses typed snake_case columns so a future web app can use it directly.
-  Sign-in is an emailed 6-digit code, never a magic link (a link opens the
-  browser, not the installed PWA, which has separate storage). Folder
+  Sign-in is email + password with Supabase "Confirm email" off, so no email
+  is ever sent. Emailed codes were tried first and dropped: Supabase's built-in
+  sender allows 2 emails/hour to team addresses only. Magic links are out too
+  (a link opens the browser, not the installed PWA, which has separate storage). Folder
   auto-backup was removed; manual Export/Import JSON remains as an escape hatch.
 
 ---
@@ -140,7 +142,7 @@ fallback); looseness tuning was tried and measured worse. (2) Storage: Supabase
 sync replaces folder auto-backup. Dexie v4 adds indexed `updatedAt` on all
 synced tables, `tombstones`, `syncState`, drops `handles`. New `core/sync/`
 (mappers, backend seam, Supabase backend, `SyncService`), Settings "Account &
-sync" (email code sign-in, sync now, storage persistence line), deck list
+sync" (email + password sign-in, sync now, storage persistence line), deck list
 nudges sign-in instead of folder restore. SQL + setup steps in `supabase/`.
 Also calls `navigator.storage.persist()` at start. 222 tests passing, initial
 bundle ~253 kB. Not yet exercised against a real Supabase project or in a real

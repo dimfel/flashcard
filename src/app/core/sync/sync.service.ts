@@ -82,15 +82,16 @@ export class SyncService {
     return (this.initializing ??= this.initOnce());
   }
 
-  async sendCode(email: string): Promise<void> {
+  /** Signs in, then syncs straight away — on a fresh device this is the restore. */
+  async signIn(email: string, password: string): Promise<void> {
     await this.init();
-    await this.backend.sendCode(email.trim());
+    this.setUser(await this.backend.signIn(email.trim(), password));
+    await this.sync();
   }
 
-  /** Signs in, then syncs straight away — on a fresh device this is the restore. */
-  async verifyCode(email: string, code: string): Promise<void> {
+  async createAccount(email: string, password: string): Promise<void> {
     await this.init();
-    this.setUser(await this.backend.verifyCode(email.trim(), code.trim()));
+    this.setUser(await this.backend.signUp(email.trim(), password));
     await this.sync();
   }
 

@@ -24,30 +24,30 @@ export class SupabaseBackend implements SyncBackend {
     return toUser(data.session?.user);
   }
 
-  async sendCode(email: string): Promise<void> {
-    const { error } = await (await this.client()).auth.signInWithOtp({
+  async signIn(email: string, password: string): Promise<SyncUser> {
+    const { data, error } = await (await this.client()).auth.signInWithPassword({
       email,
-      options: { shouldCreateUser: true },
+      password,
     });
     if (error) {
       throw error;
     }
+    return requireUser(data.user);
   }
 
-  async verifyCode(email: string, code: string): Promise<SyncUser> {
-    const { data, error } = await (await this.client()).auth.verifyOtp({
-      email,
-      token: code,
-      type: 'email',
-    });
+  async signUp(email: string, password: string): Promise<SyncUser> {
+    const { data, error } = await (await this.client()).auth.signUp({ email, password });
     if (error) {
       throw error;
     }
-    const user = toUser(data.user);
-    if (!user) {
-      throw new Error('Sign-in did not return an account.');
+    // With "Confirm email" on, Supabase creates the user but withholds the
+    // session until a link is clicked — which the default sender rarely delivers.
+    if (!data.session) {
+      throw new Error(
+        'Account created, but Supabase wants email confirmation first. Turn off "Confirm email" (Authentication → Sign In / Providers → Email), then sign in.',
+      );
     }
-    return user;
+    return requireUser(data.user);
   }
 
   async signOut(): Promise<void> {
@@ -100,6 +100,14 @@ export class SupabaseBackend implements SyncBackend {
       }),
     ));
   }
+}
+
+function requireUser(user: { id: string; email?: string } | null | undefined): SyncUser {
+  const signedIn = toUser(user);
+  if (!signedIn) {
+    throw new Error('Sign-in did not return an account.');
+  }
+  return signedIn;
 }
 
 function toUser(user: { id: string; email?: string } | null | undefined): SyncUser | null {

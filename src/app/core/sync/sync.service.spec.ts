@@ -30,11 +30,13 @@ class FakeBackend implements SyncBackend {
     return this.user;
   }
 
-  async sendCode(): Promise<void> {}
-
-  async verifyCode(email: string): Promise<SyncUser> {
+  async signIn(email: string): Promise<SyncUser> {
     this.user = { id: 'user-1', email };
     return this.user;
+  }
+
+  async signUp(email: string): Promise<SyncUser> {
+    return this.signIn(email);
   }
 
   async signOut(): Promise<void> {
@@ -134,7 +136,7 @@ describe('SyncService', () => {
     it('pushes every existing local row on the first sign-in', async () => {
       const card = await addCard();
 
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
 
       expect(service.status()).toBe('idle');
       expect(backend.get('decks', 'deck-1')).toMatchObject({ user_id: 'user-1', deleted: false });
@@ -144,7 +146,7 @@ describe('SyncService', () => {
     });
 
     it('pulls a change made on another device without pushing it back', async () => {
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
       backend.seed('decks', {
         user_id: 'user-1',
         id: 'deck-remote',
@@ -166,7 +168,7 @@ describe('SyncService', () => {
 
     it('takes the remote copy when it was edited more recently', async () => {
       await addCard();
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
       await delay(5);
 
       backend.seed('decks', { ...backend.get('decks', 'deck-1'), name: 'Renamed', updated_at: Date.now() });
@@ -177,7 +179,7 @@ describe('SyncService', () => {
 
     it('keeps a local edit made after the remote one, and pushes it', async () => {
       await addCard();
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
       backend.seed('decks', { ...backend.get('decks', 'deck-1'), name: 'Remote', updated_at: Date.now() });
       await delay(5);
 
@@ -190,7 +192,7 @@ describe('SyncService', () => {
 
     it('pushes a local delete, cascade included, as deleted rows', async () => {
       const card = await addCard();
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
 
       await cards.remove(card.id);
       await delay(10);
@@ -203,7 +205,7 @@ describe('SyncService', () => {
 
     it('does not let a stale remote copy resurrect a card deleted here', async () => {
       const card = await addCard();
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
 
       await cards.remove(card.id);
       await delay(10);
@@ -215,7 +217,7 @@ describe('SyncService', () => {
 
     it('applies a delete made on another device', async () => {
       const card = await addCard();
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
       await delay(5);
 
       backend.seed('cards', { ...backend.get('cards', card.id), deleted: true, updated_at: Date.now() });
@@ -229,7 +231,7 @@ describe('SyncService', () => {
       await addCard();
       backend.failNextPush = new Error('Network down');
 
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
 
       expect(service.status()).toBe('error');
       expect(service.error()).toBe('Network down');
@@ -242,7 +244,7 @@ describe('SyncService', () => {
     });
 
     it('syncs on its own shortly after a local edit', async () => {
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
 
       const card = await addCard('发生');
       await delay(DEBOUNCE_MS * 4);
@@ -253,7 +255,7 @@ describe('SyncService', () => {
 
     it('keeps local cards when signing out', async () => {
       await addCard();
-      await service.verifyCode(EMAIL, '123456');
+      await service.signIn(EMAIL, 'correct-horse');
 
       await service.signOut();
 

@@ -12,47 +12,36 @@
     }
     @case ('signed-out') {
       <p class="panel-note">
-        Sign in to keep your cards in the cloud and on every device you use. You’ll get a 6-digit
-        code by email — no password.
+        Sign in to keep your cards in the cloud and on every device you use. First time here? Pick an
+        email and password, then choose <strong>Create account</strong>.
       </p>
 
-      @if (!codeSent()) {
-        <form class="panel-actions" (ngSubmit)="sendCode()">
-          <input
-            class="input"
-            type="email"
-            name="email"
-            autocomplete="email"
-            placeholder="you@example.com"
-            [ngModel]="email()"
-            (ngModelChange)="email.set($event)"
-          />
-          <button type="submit" class="btn btn-primary" [disabled]="busy() || !email().trim()">
-            Send code
-          </button>
-        </form>
-      } @else {
-        <p class="panel-note">
-          Code sent to <strong>{{ email() }}</strong>.
-        </p>
-        <form class="panel-actions" (ngSubmit)="verifyCode()">
-          <input
-            class="input narrow"
-            name="code"
-            inputmode="numeric"
-            autocomplete="one-time-code"
-            placeholder="123456"
-            [ngModel]="code()"
-            (ngModelChange)="code.set($event)"
-          />
-          <button type="submit" class="btn btn-primary" [disabled]="busy() || !code().trim()">
-            Sign in
-          </button>
-          <button type="button" class="btn" [disabled]="busy()" (click)="codeSent.set(false)">
-            Use a different email
-          </button>
-        </form>
-      }
+      <form class="panel-actions" (ngSubmit)="signIn()">
+        <input
+          class="input"
+          type="email"
+          name="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+          [ngModel]="email()"
+          (ngModelChange)="email.set($event)"
+        />
+        <input
+          class="input"
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          placeholder="Password (6+ characters)"
+          [ngModel]="password()"
+          (ngModelChange)="password.set($event)"
+        />
+        <button type="submit" class="btn btn-primary" [disabled]="busy() || !canSubmit()">
+          Sign in
+        </button>
+        <button type="button" class="btn" [disabled]="busy() || !canSubmit()" (click)="createAccount()">
+          Create account
+        </button>
+      </form>
     }
     @default {
       <p class="panel-note">
